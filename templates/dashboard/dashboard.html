@@ -29,19 +29,7 @@
     <li class="list-group-item">R²: {{ metrics.r2 }}</li>
     <li class="list-group-item">Predicción para {{ metrics.target_date }}: {{ metrics.predicted_price }}</li>
     <li class="list-group-item">IC dinámico 95%: [{{ metrics.lower_95 }}, {{ metrics.upper_95 }}]</li>
+    <li class="list-group-item">Precisión direccional: {{ metrics.directional_acc|floatformat:2 }}%</li>
+    <li class="list-group-item">Cobertura IC Estática: {{ metrics.coverage|floatformat:2 }}%</li>
   </ul>
-
-  <div class="row">
-    <div class="col-md-6 mb-4 text-center">
-      <h5>Precisión direccional</h5>
-      <img src="data:image/png;base64,{{ plot_directional }}" class="img-fluid rounded" alt="Pie chart precisión direccional">
-    </div>
-    <div class="col-md-6 mb-4 text-center">
-      <h5>Cobertura IC Estática</h5>
-      <img src="data:image/png;base64,{{ plot_coverage }}" class="img-fluid rounded" alt="Pie chart cobertura IC">
-    </div>
-  </div>
-
-
-
 {% endblock %}

@@ -14,6 +14,7 @@ from datetime import datetime
 from pandas.tseries.offsets import BDay
 from functools import lru_cache
 from pathlib import Path
+from django.conf import settings
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -156,37 +157,22 @@ def run_prophet_and_plot():
     plt.savefig(buf2, format='png'); plt.close(); buf2.seek(0)
     img2 = base64.b64encode(buf2.read()).decode()
 
-    # 15. Pie precision direccional
-    buf3 = BytesIO()
-    plt.figure(figsize=(6,6))
-    colors_dir = ['#4daf4a', '#e41a1c']
-    plt.pie([directional_acc, 1 - directional_acc], labels=['Correctas', 'Incorrectas'], autopct='%1.1f%%', startangle=90, colors=colors_dir, textprops={'fontsize':12, 'fontfamily':'sans-serif'})
-    plt.title('Precisión Direccional', fontsize=14, fontfamily='sans-serif')
-    plt.axis('equal'); plt.tight_layout()
-    plt.savefig(buf3, format='png'); plt.close(); buf3.seek(0)
-    img3 = base64.b64encode(buf3.read()).decode()
-
-    # 16. Pie cobertura IC
-    buf4 = BytesIO()
-    plt.figure(figsize=(6,6))
-    colors_cov = ['#377eb8', '#ff7f0e']
-    plt.pie([coverage, 1 - coverage], labels=['Dentro IC', 'Fuera IC'], autopct='%1.1f%%', startangle=90, colors=colors_cov, textprops={'fontsize':12, 'fontfamily':'sans-serif'})
-    plt.title('Cobertura IC Estática', fontsize=14, fontfamily='sans-serif')
-    plt.axis('equal'); plt.tight_layout()
-    plt.savefig(buf4, format='png'); plt.close(); buf4.seek(0)
-    img4 = base64.b64encode(buf4.read()).decode()
-
-    # 17. Métricas finales
+    # 15. Métricas finales sin gráficos de pie
     metrics = {
         'rmse': rmse,
         'mae': mae,
         'mape': mape,
         'r2': r2,
-        'coverage': coverage,
+        'coverage': coverage*100,
+        'directional_acc': directional_acc*100,
         'predicted_price': float(pred_t.at[0, 'yhat']),
         'lower_95': float(pred_t.at[0, 'lower_95']),
         'upper_95': float(pred_t.at[0, 'upper_95']),
         'target_date': target.date(),
     }
 
-    return {'metrics': metrics, 'plot_full': img1, 'plot_recent': img2, 'plot_directional': img3, 'plot_coverage': img4}
+    return {
+        'metrics': metrics,
+        'plot_full': img1,
+        'plot_recent': img2
+    }
