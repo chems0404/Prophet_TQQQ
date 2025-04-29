@@ -12,8 +12,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from datetime import datetime
 from pandas.tseries.offsets import BDay
+from functools import lru_cache 
 
-
+@lru_cache(maxsize=1) 
 def run_prophet_and_plot():
     # 1. Cargar y preparar TQQQ
     tqqq = pd.read_csv(
