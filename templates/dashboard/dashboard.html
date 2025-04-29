@@ -4,6 +4,12 @@
 {% block content %}
   <h2 class="mb-4">Dashboard de Prophet</h2>
 
+  <!-- Botón para recalcular modelo -->
+  <form method="post" action="{% url 'recalcular' %}" class="mb-4">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-warning">Recalcular modelo Prophet</button>
+  </form>
+
   <div class="row">
     <div class="col-md-6 mb-4">
       <h5>Serie completa vs Predicción</h5>
@@ -25,7 +31,6 @@
     <li class="list-group-item">IC dinámico 95%: [{{ metrics.lower_95 }}, {{ metrics.upper_95 }}]</li>
   </ul>
 
-  <!-- Pie charts lado a lado -->
   <div class="row">
     <div class="col-md-6 mb-4 text-center">
       <h5>Precisión direccional</h5>
@@ -36,5 +41,7 @@
       <img src="data:image/png;base64,{{ plot_coverage }}" class="img-fluid rounded" alt="Pie chart cobertura IC">
     </div>
   </div>
+
+
 
 {% endblock %}

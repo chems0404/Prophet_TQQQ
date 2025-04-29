@@ -9,7 +9,6 @@
       <div class="card-body">
         <h5 class="card-title text-center mb-4">Accede a tu cuenta</h5>
 
-        {# Mostrar errores globales o de campo #}
         {% if form.errors %}
           <div class="alert alert-danger">
             {% for field in form %}
@@ -61,7 +60,6 @@
             {% endif %}
           </div>
 
-          <!-- Casilla “Recuérdame” -->
           <div class="form-check mb-3">
             <input
               class="form-check-input"
@@ -75,13 +73,13 @@
             </label>
           </div>
 
-          <!-- Único botón de envío -->
-          <div class="d-grid">
+          <div class="d-grid mb-2">
             <button type="submit" class="btn btn-primary">Entrar</button>
-            <div class="text-center">
-              <a href="{% url 'password_reset' %}">¿Olvidaste tu contraseña?</a>
-            </div>
-            
+          </div>
+
+          <div class="text-center">
+            <a href="{% url 'password_reset' %}">¿Olvidaste tu contraseña?</a><br>
+            ¿No tienes una cuenta? <a href="{% url 'signup' %}">Regístrate aquí</a>
           </div>
         </form>
 

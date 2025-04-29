@@ -3,7 +3,9 @@ from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import RedirectView
 from accounts.views import CustomLoginView, signup
-from dashboard.views import dashboard_view
+from dashboard.views import dashboard_view, recalcular_view
+
+
 
 
 urlpatterns = [
@@ -18,5 +20,6 @@ urlpatterns = [
 
     # Redirigir la raíz a login (opcional)
     path('', RedirectView.as_view(pattern_name='login', permanent=False)),
-    path('dashboard/', dashboard_view, name='dashboard')
+    path('dashboard/', dashboard_view, name='dashboard'),
+    path('recalcular/', recalcular_view, name='recalcular')
 ]

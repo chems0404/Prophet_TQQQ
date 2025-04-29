@@ -12,15 +12,18 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from datetime import datetime
 from pandas.tseries.offsets import BDay
-from functools import lru_cache 
+from functools import lru_cache
+from pathlib import Path
+BASE_DIR = Path(__file__).resolve().parent.parent
+
 
 @lru_cache(maxsize=1) 
 def run_prophet_and_plot():
     # 1. Cargar y preparar TQQQ
-    tqqq = pd.read_csv(
-        r"C:\Users\chems\Documents\MODELO INVERSION TQQQ\TQQQ_data.csv",
-        parse_dates=['Date']
-    ).rename(columns={'Date':'ds','TQQQ.Close':'y'})
+    tqqq = (
+        pd.read_csv(BASE_DIR / 'data' / 'TQQQ_data.csv', parse_dates=['Date'])
+        .rename(columns={'Date': 'ds', 'TQQQ.Close': 'y'})
+    )
     stoch = StochasticOscillator(
         close=tqqq['y'], high=tqqq['TQQQ.High'], low=tqqq['TQQQ.Low'],
         window=14, smooth_window=3
@@ -31,10 +34,10 @@ def run_prophet_and_plot():
     tqqq['volume_scaled'] = scaler.fit_transform(tqqq[['TQQQ.Volume']])
 
     # 2. Cargar y preparar QQQ
-    qqq = pd.read_csv(
-        r"C:\Users\chems\Documents\MODELO INVERSION TQQQ\QQQ_data.csv",
-        parse_dates=['Date']
-    ).rename(columns={'Date':'ds','QQQ.Close':'qqq_close'})
+    qqq = (
+    pd.read_csv(BASE_DIR / 'data' / 'QQQ_data.csv', parse_dates=['Date'])
+    .rename(columns={'Date': 'ds', 'QQQ.Close': 'qqq_close'})
+)
     qqq['qqq_return'] = np.log(qqq['qqq_close'] / qqq['qqq_close'].shift(1))
 
     # 3. Merge + rezagos
