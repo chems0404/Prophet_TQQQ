@@ -1,0 +1,92 @@
+<!-- templates/registration/login.html -->
+{% extends 'base.html' %}
+{% block title %}Iniciar sesión{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-sm-10 col-md-6 col-lg-4">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title text-center mb-4">Accede a tu cuenta</h5>
+
+        {# Mostrar errores globales o de campo #}
+        {% if form.errors %}
+          <div class="alert alert-danger">
+            {% for field in form %}
+              {% for error in field.errors %}
+                {{ error }}<br>
+              {% endfor %}
+            {% endfor %}
+            {% for error in form.non_field_errors %}
+              {{ error }}<br>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          <div class="form-floating mb-3">
+            <input
+              type="text"
+              name="username"
+              class="form-control {% if form.username.errors %}is-invalid{% endif %}"
+              id="floatingUsername"
+              placeholder="Usuario"
+              value="{{ form.username.value|default_if_none:'' }}"
+              required
+            >
+            <label for="floatingUsername">Usuario</label>
+            {% if form.username.errors %}
+              <div class="invalid-feedback">
+                {{ form.username.errors.0 }}
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="form-floating mb-3">
+            <input
+              type="password"
+              name="password"
+              class="form-control {% if form.password.errors %}is-invalid{% endif %}"
+              id="floatingPassword"
+              placeholder="Clave"
+              required
+            >
+            <label for="floatingPassword">Clave</label>
+            {% if form.password.errors %}
+              <div class="invalid-feedback">
+                {{ form.password.errors.0 }}
+              </div>
+            {% endif %}
+          </div>
+
+          <!-- Casilla “Recuérdame” -->
+          <div class="form-check mb-3">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              name="remember_me"
+              id="rememberMe"
+              {% if form.remember_me.value %}checked{% endif %}
+            >
+            <label class="form-check-label" for="rememberMe">
+              Recuérdame
+            </label>
+          </div>
+
+          <!-- Único botón de envío -->
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary">Entrar</button>
+            <div class="text-center">
+              <a href="{% url 'password_reset' %}">¿Olvidaste tu contraseña?</a>
+            </div>
+            
+          </div>
+        </form>
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
