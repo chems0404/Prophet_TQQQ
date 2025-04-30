@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}¿Cómo funciona?{% endblock %}
+
+{% block content %}
+  <h2 class="mb-4">¿Cómo funciona el modelo Prophet?</h2>
+
+  <p>Este dashboard utiliza un modelo de series temporales avanzado llamado <strong>Prophet</strong>, desarrollado por Meta, para pronosticar el precio del ETF <strong>TQQQ</strong>. A continuación, te explicamos por qué es confiable y útil:</p>
+
+  <h4 class="mt-4">📈 Datos utilizados</h4>
+  <ul>
+    <li>Histórico del precio de TQQQ</li>
+    <li>Precio y retorno diario del ETF QQQ</li>
+    <li>Indicadores técnicos (Stochastic Oscillator)</li>
+    <li>Volumen escalado y rezagos del precio</li>
+  </ul>
+
+  <h4 class="mt-4">🧠 ¿Qué hace el modelo?</h4>
+  <ul>
+    <li>Entrena un modelo Prophet con los datos mencionados.</li>
+    <li>Calcula predicciones para los próximos 30 días hábiles.</li>
+    <li>Ajusta los intervalos de confianza dinámicamente usando la volatilidad reciente.</li>
+  </ul>
+
+  <h4 class="mt-4">📊 Métricas que validan su calidad</h4>
+  <ul>
+    <li><strong>RMSE (Root Mean Square Error)</strong>: mide el error promedio en unidades del precio. Cuanto más bajo, mejor.</li>
+    <li><strong>MAE (Mean Absolute Error)</strong>: error absoluto medio. Da idea de la desviación típica diaria.</li>
+    <li><strong>MAPE (%)</strong>: error porcentual medio. Útil para comparar con otros modelos o activos.</li>
+    <li><strong>R² (Coeficiente de determinación)</strong>: indica qué tan bien el modelo explica las variaciones del precio. Un valor cercano a 1 es excelente.</li>
+    <li><strong>Precisión direccional</strong>: qué porcentaje de veces el modelo acierta la dirección del movimiento (sube o baja).</li>
+    <li><strong>Cobertura del intervalo de confianza</strong>: porcentaje de veces que el valor real cayó dentro del rango proyectado. Si está cerca del 95%, el modelo está bien calibrado.</li>
+  </ul>
+
+  <h4 class="mt-4">🎯 ¿Por qué confiar en este modelo?</h4>
+  <ul>
+    <li>Utiliza datos reales del mercado y técnicas de análisis técnico.</li>
+    <li>Es replicable y transparente.</li>
+    <li>Brinda una estimación con margen de error y probabilidad asociada.</li>
+    <li>Permite decisiones más informadas para quienes siguen el ETF TQQQ.</li>
+  </ul>
+
+{% endblock %}

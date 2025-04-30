@@ -20,3 +20,7 @@ def recalcular_view(request):
     """
     run_prophet_and_plot.cache_clear()  # limpia el cache
     return redirect('dashboard')  # vuelve a cargar el dashboard
+
+@login_required
+def explicacion_view(request):
+    return render(request, 'dashboard/explicacion.html')
