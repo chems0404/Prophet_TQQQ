@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard UPRO{% endblock %}
+
+{% block content %}
+  <h2 class="mb-4">Dashboard de Prophet - UPRO</h2>
+
+  <!-- Botón para recalcular modelo -->
+  <form method="post" action="{% url 'recalcular' %}" class="mb-4">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-warning">Recalcular modelo UPRO</button>
+  </form>
+
+  <div class="row">
+    <div class="col-md-6 mb-4">
+      <h5>Serie completa vs Predicción</h5>
+      <img src="data:image/png;base64,{{ upro_plot_full }}" class="img-fluid rounded">
+    </div>
+    <div class="col-md-6 mb-4">
+      <h5>Últimos 5 días & Predicción siguiente día</h5>
+      <img src="data:image/png;base64,{{ upro_plot_recent }}" class="img-fluid rounded">
+    </div>
+  </div>
+
+  <h5>Métricas</h5>
+  <ul class="list-group mb-4">
+    <li class="list-group-item">RMSE: {{ upro_metrics.rmse }}</li>
+    <li class="list-group-item">MAE: {{ upro_metrics.mae }}</li>
+    <li class="list-group-item">MAPE: {{ upro_metrics.mape }}%</li>
+    <li class="list-group-item">R²: {{ upro_metrics.r2 }}</li>
+    <li class="list-group-item">Predicción para {{ upro_metrics.target_date }}: {{ upro_metrics.predicted_price }}</li>
+    <li class="list-group-item">IC dinámico 95%: [{{ upro_metrics.lower_95 }}, {{ upro_metrics.upper_95 }}]</li>
+    <li class="list-group-item">Precisión direccional: {{ upro_metrics.directional_acc|floatformat:2 }}%</li>
+    <li class="list-group-item">Cobertura IC Estática: {{ upro_metrics.coverage|floatformat:2 }}%</li>
+  </ul>
+{% endblock %}

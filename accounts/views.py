@@ -17,7 +17,8 @@ class CustomLoginView(LoginView):
             self.request.session.set_expiry(1209600)  # 2 semanas
         else:
             self.request.session.set_expiry(0)  # hasta cerrar navegador
-        return super().form_valid(form)
+        login(self.request, form.get_user())  # <- Esto asegura redirección manual
+        return redirect('elegir_dashboard')  # Redirige a la pantalla de elección
 
 
 def signup(request):
@@ -31,7 +32,7 @@ def signup(request):
                 user.set_password(form.cleaned_data['password'])
                 user.save()
                 login(request, user)
-                return redirect('dashboard')
+                return redirect('elegir_dashboard')  # Redirige a la pantalla de elección
     else:
         form = SignUpForm()
     return render(request, 'registration/signup.html', {'form': form})

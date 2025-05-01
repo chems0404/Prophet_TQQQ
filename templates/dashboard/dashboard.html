@@ -4,32 +4,34 @@
 {% block content %}
   <h2 class="mb-4">Dashboard de Prophet</h2>
 
-  <!-- Botón para recalcular modelo -->
+  <!-- Botón para recalcular ambos modelos -->
   <form method="post" action="{% url 'recalcular' %}" class="mb-4">
     {% csrf_token %}
-    <button type="submit" class="btn btn-warning">Recalcular modelo Prophet</button>
+    <button type="submit" class="btn btn-warning">Recalcular modelos Prophet</button>
   </form>
 
+  <!-- Sección TQQQ -->
+  <h3 class="mt-4">Predicción: TQQQ</h3>
   <div class="row">
     <div class="col-md-6 mb-4">
       <h5>Serie completa vs Predicción</h5>
-      <img src="data:image/png;base64,{{ plot_full }}" class="img-fluid rounded">
+      <img src="data:image/png;base64,{{ tqqq_plot_full }}" class="img-fluid rounded">
     </div>
     <div class="col-md-6 mb-4">
       <h5>Últimos 5 días & Predicción siguiente día</h5>
-      <img src="data:image/png;base64,{{ plot_recent }}" class="img-fluid rounded">
+      <img src="data:image/png;base64,{{ tqqq_plot_recent }}" class="img-fluid rounded">
     </div>
   </div>
 
-  <h5>Métricas</h5>
+  <h5>Métricas TQQQ</h5>
   <ul class="list-group mb-4">
-    <li class="list-group-item">RMSE: {{ metrics.rmse }}</li>
-    <li class="list-group-item">MAE: {{ metrics.mae }}</li>
-    <li class="list-group-item">MAPE: {{ metrics.mape }}%</li>
-    <li class="list-group-item">R²: {{ metrics.r2 }}</li>
-    <li class="list-group-item">Predicción para {{ metrics.target_date }}: {{ metrics.predicted_price }}</li>
-    <li class="list-group-item">IC dinámico 95%: [{{ metrics.lower_95 }}, {{ metrics.upper_95 }}]</li>
-    <li class="list-group-item">Precisión direccional: {{ metrics.directional_acc|floatformat:2 }}%</li>
-    <li class="list-group-item">Cobertura IC Estática: {{ metrics.coverage|floatformat:2 }}%</li>
+    <li class="list-group-item">RMSE: {{ tqqq_metrics.rmse }}</li>
+    <li class="list-group-item">MAE: {{ tqqq_metrics.mae }}</li>
+    <li class="list-group-item">MAPE: {{ tqqq_metrics.mape }}%</li>
+    <li class="list-group-item">R²: {{ tqqq_metrics.r2 }}</li>
+    <li class="list-group-item">Predicción para {{ tqqq_metrics.target_date }}: {{ tqqq_metrics.predicted_price }}</li>
+    <li class="list-group-item">IC dinámico 95%: [{{ tqqq_metrics.lower_95 }}, {{ tqqq_metrics.upper_95 }}]</li>
+    <li class="list-group-item">Precisión direccional: {{ tqqq_metrics.directional_acc|floatformat:2 }}%</li>
+    <li class="list-group-item">Cobertura IC Estática: {{ tqqq_metrics.coverage|floatformat:2 }}%</li>
   </ul>
-{% endblock %}
+  {% endblock %}

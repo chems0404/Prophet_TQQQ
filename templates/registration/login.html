@@ -1,4 +1,3 @@
-<!-- templates/registration/login.html -->
 {% extends 'base.html' %}
 {% block title %}Iniciar sesión{% endblock %}
 
@@ -24,6 +23,9 @@
 
         <form method="post" novalidate>
           {% csrf_token %}
+          {% if next %}
+            <input type="hidden" name="next" value="{{ next }}">
+          {% endif %}
 
           <div class="form-floating mb-3">
             <input
