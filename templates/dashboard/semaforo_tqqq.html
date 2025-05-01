@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Señal TQQQ{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Señal de inversión diaria - TQQQ</h2>
+
+<div class="card border-{{ color }} mb-4">
+  <div class="card-header bg-{{ color }} text-white">
+    Recomendación del modelo
+  </div>
+  <div class="card-body">
+    <h5 class="card-title">{{ recomendacion }}</h5>
+    <p class="card-text">
+      <strong>RSI actual:</strong> {{ rsi }} ({{ rsi_zone }})<br>
+      <strong>Dirección esperada:</strong> {{ direction }}<br>
+      <strong>¿Coincide con la de ayer?:</strong> {{ consistency|yesno:"Sí,No" }}
+    </p>
+  </div>
+</div>
+
+<a href="{% url 'dashboard_tqqq' %}" class="btn btn-outline-primary">Volver al Dashboard TQQQ</a>
+{% endblock %}

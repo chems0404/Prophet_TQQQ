@@ -8,27 +8,34 @@ from dashboard.views import (
     dashboard_upro_view,
     recalcular_view,
     explicacion_view,
+    semaforo_tqqq_view,
+    semaforo_upro_view   #  AÑADIDO
 )
 
 urlpatterns = [
     path('admin/', admin.site.urls),
 
-    # Login personalizado
+    # Login y registro personalizado
     path('accounts/login/', CustomLoginView.as_view(), name='login'),
     path('accounts/signup/', signup, name='signup'),
     path('accounts/', include('django.contrib.auth.urls')),
 
-    # Redirige raíz a login
+    # Redirección raíz al login
     path('', RedirectView.as_view(pattern_name='login', permanent=False)),
 
-    # Página de selección de dashboard tras login
+    # Página de selección de dashboard
     path('dashboard/', elegir_dashboard_view, name='elegir_dashboard'),
 
-    # Dashboards separados
+    # Dashboards
     path('dashboard/tqqq/', dashboard_view, name='dashboard_tqqq'),
     path('dashboard/upro/', dashboard_upro_view, name='dashboard_upro'),
 
-    # Recalcular y explicación
+    # Panel de señal tipo semáforo
+    path('semaforo/tqqq/', semaforo_tqqq_view, name='semaforo_tqqq'),
+    path('semaforo/upro/', semaforo_upro_view, name='semaforo_upro'),
+
+
+    # Otros
     path('recalcular/', recalcular_view, name='recalcular'),
     path('como-funciona/', explicacion_view, name='explicacion'),
 ]

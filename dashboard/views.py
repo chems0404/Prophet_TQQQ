@@ -1,8 +1,9 @@
 # dashboard/views.py
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
-from .utils import run_prophet_and_plot, run_upro_prophet_and_plot
+from .utils import run_prophet_and_plot, run_upro_prophet_and_plot, get_tqqq_signal, get_upro_signal
 from django.contrib.auth.decorators import login_required
+ 
 
 @login_required
 def dashboard_view(request):
@@ -26,13 +27,10 @@ def dashboard_view(request):
 
 @login_required
 def recalcular_view(request):
-    """
-    Fuerza recálculo del modelo borrando el caché.
-    Redirige al dashboard con datos actualizados.
-    """
     run_prophet_and_plot.cache_clear()
     run_upro_prophet_and_plot.cache_clear()
-    return redirect('dashboard')
+    return redirect('dashboard_tqqq')  # Aquí corregido
+
 
 @login_required
 def explicacion_view(request):
@@ -54,4 +52,13 @@ def dashboard_upro_view(request):
 
     return render(request, 'dashboard/dashboard_upro.html', context)
 
+@login_required
+def semaforo_tqqq_view(request):
+    context = get_tqqq_signal()
+    return render(request, 'dashboard/semaforo_tqqq.html', context)
+
+@login_required
+def semaforo_upro_view(request):
+    context = get_upro_signal()
+    return render(request, 'dashboard/semaforo_upro.html', context)
 

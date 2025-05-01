@@ -347,3 +347,102 @@ def run_upro_prophet_and_plot():
         'plot_full': img1,
         'plot_recent': img2
     }
+
+
+@lru_cache(maxsize=1)
+def get_tqqq_signal():
+    # Cargar predicción y datos reales
+    output = run_prophet_and_plot()
+    pred = output['metrics']['predicted_price']
+    tqqq_df = pd.read_csv(BASE_DIR / 'data' / 'TQQQ_data.csv', parse_dates=['Date'])
+    tqqq_df = tqqq_df.rename(columns={'Date': 'ds', 'TQQQ.Close': 'close'})
+    tqqq_df.sort_values('ds', inplace=True)
+
+    # Calcular RSI
+    rsi = RSIIndicator(close=tqqq_df['close'], window=14).rsi()
+    rsi_value = rsi.iloc[-1]
+
+    # Clasificar RSI
+    if rsi_value < 30:
+        rsi_zone = 'Sobreventa'
+    elif rsi_value < 60:
+        rsi_zone = 'Operable'
+    else:
+        rsi_zone = 'Sobrecompra'
+
+    # Comparar dirección
+    prev_close = tqqq_df['close'].iloc[-1]
+    direction = '↑ Subida' if pred > prev_close else '↓ Bajada' if pred < prev_close else '→ Lateral'
+    yesterday = tqqq_df['close'].iloc[-2]
+    prev_dir = '↑ Subida' if prev_close > yesterday else '↓ Bajada' if prev_close < yesterday else '→ Lateral'
+    consistency = direction == prev_dir
+
+    # Asignar color y recomendación
+    if direction == '↑ Subida' and rsi_zone == 'Operable':
+        color = 'success'
+        recomendacion = 'Posible entrada'
+    elif direction == '↓ Bajada' or rsi_zone == 'Sobrecompra':
+        color = 'danger'
+        recomendacion = 'Evitar entrada'
+    else:
+        color = 'warning'
+        recomendacion = 'Esperar'
+
+    return {
+        'rsi': round(rsi_value, 2),
+        'rsi_zone': rsi_zone,
+        'direction': direction,
+        'consistency': consistency,
+        'recomendacion': recomendacion,
+        'color': color
+    }
+
+
+@lru_cache(maxsize=1)
+def get_upro_signal():
+    # 1. Cargar UPRO y calcular RSI
+    upro = pd.read_csv(BASE_DIR / 'data' / 'UPRO_data.csv', parse_dates=['Date'])
+    rsi = RSIIndicator(close=upro['UPRO.Close'], window=14).rsi()
+    upro['rsi'] = rsi
+    upro.dropna(inplace=True)
+
+    last = upro.iloc[-1]
+    last_rsi = round(last['rsi'], 2)
+
+    # 2. Clasificar zona RSI
+    if last_rsi > 70:
+        rsi_zone = 'Sobrecompra'
+    elif last_rsi < 30:
+        rsi_zone = 'Sobreventa'
+    else:
+        rsi_zone = 'Operable'
+
+    # 3. Usar señal direccional del modelo Prophet
+    data = run_upro_prophet_and_plot()
+    direction = '↑ Subida' if data['metrics']['directional_acc'] > 50 else '↓ Bajada'
+
+    # 4. Coincidencia con dirección del día anterior
+    upro['return'] = upro['UPRO.Close'].pct_change()
+    last_dir = np.sign(upro.iloc[-1]['return'])
+    prev_dir = np.sign(upro.iloc[-2]['return'])
+    consistency = last_dir == prev_dir
+
+    # 5. Recomendación basada en RSI y dirección esperada
+    if direction == '↑ Subida' and rsi_zone == 'Operable':
+        recomendacion = 'Posible entrada'
+        color = 'success'
+    elif direction == '↓ Bajada' or rsi_zone == 'Sobrecompra':
+        recomendacion = 'Evitar entrada'
+        color = 'danger'
+    else:
+        recomendacion = 'Esperar'
+        color = 'warning'
+
+    return {
+        'recomendacion': recomendacion,
+        'rsi': last_rsi,
+        'rsi_zone': rsi_zone,
+        'direction': direction,
+        'consistency': consistency,
+        'color': color
+    }

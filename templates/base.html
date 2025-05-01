@@ -14,31 +14,39 @@
 
   <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
     <div class="container-fluid">
-      <a class="navbar-brand" href="/">Predicciones TQQQ</a>
-      <div class="collapse navbar-collapse">
+      <a class="navbar-brand" href="/">Predicciones ETF</a>
+      
+      <!-- Botón hamburguesa -->
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavDropdown">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+  
+      <!-- Menú colapsable -->
+      <div class="collapse navbar-collapse" id="navbarNavDropdown">
         <ul class="navbar-nav ms-auto">
           {% if user.is_authenticated %}
             <li class="nav-item">
-              <a class="nav-link" href="{% url 'elegir_dashboard' %}">Dashboard</a>
+              <a class="nav-link" href="{% url 'elegir_dashboard' %}">📊 Dashboards</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link" href="{% url 'explicacion' %}">¿Cómo funciona?</a>
+              <a class="nav-link" href="{% url 'explicacion' %}">❓ ¿Cómo funciona?</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link" href="{% url 'logout' %}">Cerrar sesión</a>
+              <a class="nav-link" href="{% url 'logout' %}">🔒 Cerrar sesión</a>
             </li>
           {% else %}
             <li class="nav-item">
               <a class="nav-link" href="{% url 'login' %}">Iniciar sesión</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link" href="{% url 'signup' %}">Regístrate</a>
+              <a class="nav-link" href="{% url 'signup' %}">Registrarse</a>
             </li>
           {% endif %}
         </ul>
       </div>
     </div>
   </nav>
+  
   
 
   <main class="container my-5">
