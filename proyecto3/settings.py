@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ¡NO subas esto a producción sin ocultarlo en .env!
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-j(%g6s#e7!jmlsryphs3a8goe5(ol*qgasornb=)9hxay8fm+y')
 
-DEBUG = False  # Producción = False
+DEBUG = False # Producción = False
 
 # Solo Render u otros dominios permitidos
 ALLOWED_HOSTS = ['.onrender.com', 'localhost', '127.0.0.1']
