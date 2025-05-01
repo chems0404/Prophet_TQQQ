@@ -55,8 +55,8 @@ def run_prophet_and_plot():
         model.add_regressor(r)
     model.fit(df[['ds','y'] + regs])
 
-    # 5. Forecast a 30 días hábiles
-    future = model.make_future_dataframe(periods=30, freq='B').set_index('ds')
+    # 5. Forecast a 7 días hábiles
+    future = model.make_future_dataframe(periods=7, freq='B').set_index('ds')
     hist = df.set_index('ds').reindex(future.index)
     win = 5
     future['qqq_close']  = hist['qqq_close'].ffill().fillna(df['qqq_close'].rolling(win).mean().iloc[-1])
