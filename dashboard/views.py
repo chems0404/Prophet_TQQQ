@@ -1,7 +1,7 @@
 # dashboard/views.py
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
-from .utils import run_prophet_and_plot, run_upro_prophet_and_plot, get_tqqq_signal, get_upro_signal
+from .utils import run_prophet_and_plot, run_upro_prophet_and_plot, get_tqqq_signal, get_upro_signal, get_soxl_signal, run_soxl_prophet_and_plot
 from django.contrib.auth.decorators import login_required
  
 
@@ -30,6 +30,19 @@ def recalcular_view(request):
     run_prophet_and_plot.cache_clear()
     run_upro_prophet_and_plot.cache_clear()
     return redirect('dashboard_tqqq')  # Aquí corregido
+
+
+@login_required
+def dashboard_soxl_view(request):
+    soxl_output = run_soxl_prophet_and_plot()
+
+    context = {
+        'soxl_plot_full': soxl_output['plot_full'],
+        'soxl_plot_recent': soxl_output['plot_recent'],
+        'soxl_metrics': soxl_output['metrics'],
+    }
+
+    return render(request, 'dashboard/dashboard_soxl.html', context)
 
 
 @login_required
@@ -62,3 +75,7 @@ def semaforo_upro_view(request):
     context = get_upro_signal()
     return render(request, 'dashboard/semaforo_upro.html', context)
 
+@login_required
+def semaforo_soxl_view(request):
+    context = get_soxl_signal()
+    return render(request, 'dashboard/semaforo_soxl.html', context)

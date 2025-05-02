@@ -12,11 +12,17 @@
     <h5 class="card-title">{{ recomendacion }}</h5>
     <p class="card-text">
       <strong>RSI actual:</strong> {{ rsi }} ({{ rsi_zone }})<br>
+      <strong>MACD (señal momentum):</strong> {{ macd }}<br>
+      <strong>CCI (tendencia reciente):</strong> {{ cci }}<br>
       <strong>Dirección esperada:</strong> {{ direction }}<br>
       <strong>¿Coincide con la de ayer?:</strong> {{ consistency|yesno:"Sí,No" }}
     </p>
   </div>
 </div>
+
+<p class="mt-4 text-muted text-sm fst-italic">
+  ⚠️ Esta señal es solo una estimación basada en análisis técnico y no constituye una recomendación financiera.
+</p>
 
 <a href="{% url 'dashboard_upro' %}" class="btn btn-outline-primary">Volver al Dashboard UPRO</a>
 {% endblock %}

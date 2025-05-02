@@ -5,7 +5,7 @@
   <h2 class="mb-4">Dashboard de Prophet - UPRO</h2>
 
   <!-- Botón para recalcular modelo -->
-<form method="post" action="{% url 'recalcular' %}" class="mb-4 d-inline">
+  <form method="post" action="{% url 'recalcular' %}" class="mb-4 d-inline">
     {% csrf_token %}
     <button type="submit" class="btn btn-warning">Recalcular modelo UPRO</button>
   </form>
@@ -35,4 +35,8 @@
     <li class="list-group-item">Precisión direccional: {{ upro_metrics.directional_acc|floatformat:2 }}%</li>
     <li class="list-group-item">Cobertura IC Estática: {{ upro_metrics.coverage|floatformat:2 }}%</li>
   </ul>
+
+  <p class="mt-4 text-muted text-sm fst-italic">
+    ⚠️ Esta predicción es solo una estimación basada en datos históricos y no constituye una recomendación de inversión.
+  </p>
 {% endblock %}

@@ -6,10 +6,12 @@ from dashboard.views import (
     elegir_dashboard_view,
     dashboard_view,
     dashboard_upro_view,
+    dashboard_soxl_view,  
     recalcular_view,
     explicacion_view,
     semaforo_tqqq_view,
-    semaforo_upro_view   #  AÑADIDO
+    semaforo_upro_view,
+    semaforo_soxl_view
 )
 
 urlpatterns = [
@@ -29,10 +31,14 @@ urlpatterns = [
     # Dashboards
     path('dashboard/tqqq/', dashboard_view, name='dashboard_tqqq'),
     path('dashboard/upro/', dashboard_upro_view, name='dashboard_upro'),
+    path('dashboard/soxl/', dashboard_soxl_view, name='dashboard_soxl'),
+
+
 
     # Panel de señal tipo semáforo
     path('semaforo/tqqq/', semaforo_tqqq_view, name='semaforo_tqqq'),
     path('semaforo/upro/', semaforo_upro_view, name='semaforo_upro'),
+    path('semaforo/soxl/', semaforo_soxl_view, name='semaforo_soxl'),
 
 
     # Otros

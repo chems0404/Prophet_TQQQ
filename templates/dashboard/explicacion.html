@@ -2,41 +2,45 @@
 {% block title %}¿Cómo funciona?{% endblock %}
 
 {% block content %}
-  <h2 class="mb-4">¿Cómo funciona el modelo Prophet?</h2>
+  <h2 class="mb-4">¿Cómo funciona el sistema de predicción y señales?</h2>
 
-  <p>Este dashboard utiliza un modelo de series temporales avanzado llamado <strong>Prophet</strong>, desarrollado por Meta, para pronosticar el precio del ETF <strong>TQQQ</strong>. A continuación, te explicamos por qué es confiable y útil:</p>
+  <p>Este dashboard combina modelos de predicción y análisis técnico para ayudarte a tomar mejores decisiones de inversión sobre ETFs como <strong>TQQQ</strong>, <strong>UPRO</strong> y <strong>SOXL</strong>. A continuación, te explicamos cómo funciona:</p>
 
   <h4 class="mt-4">📈 Datos utilizados</h4>
   <ul>
-    <li>Histórico del precio de TQQQ</li>
-    <li>Precio y retorno diario del ETF QQQ</li>
-    <li>Indicadores técnicos (Stochastic Oscillator)</li>
+    <li>Histórico de precios y retornos diarios de TQQQ, UPRO y SOXL</li>
+    <li>Precios de referencia de los ETFs subyacentes (QQQ, SPY, etc.)</li>
+    <li>Indicadores técnicos: <strong>RSI</strong>, <strong>MACD</strong>, <strong>CCI</strong></li>
     <li>Volumen escalado y rezagos del precio</li>
   </ul>
 
   <h4 class="mt-4">🧠 ¿Qué hace el modelo?</h4>
   <ul>
-    <li>Entrena un modelo Prophet con los datos mencionados.</li>
-    <li>Calcula predicciones para los próximos 30 días hábiles.</li>
-    <li>Ajusta los intervalos de confianza dinámicamente usando la volatilidad reciente.</li>
+    <li>Entrena modelos de series temporales como <strong>Prophet</strong> para cada ETF.</li>
+    <li>Predice los precios futuros a corto plazo (30 días hábiles).</li>
+    <li>Ajusta los intervalos de confianza con base en la volatilidad reciente.</li>
+    <li>Evalúa las condiciones técnicas del mercado con indicadores RSI, MACD y CCI.</li>
+    <li>Genera una señal visual tipo <strong>semáforo</strong> (verde, amarillo, rojo) según las condiciones actuales y predicciones.</li>
   </ul>
 
-  <h4 class="mt-4">📊 Métricas que validan su calidad</h4>
+  <h4 class="mt-4">📊 Métricas que validan la calidad del modelo</h4>
   <ul>
-    <li><strong>RMSE (Root Mean Square Error)</strong>: mide el error promedio en unidades del precio. Cuanto más bajo, mejor.</li>
-    <li><strong>MAE (Mean Absolute Error)</strong>: error absoluto medio. Da idea de la desviación típica diaria.</li>
-    <li><strong>MAPE (%)</strong>: error porcentual medio. Útil para comparar con otros modelos o activos.</li>
-    <li><strong>R² (Coeficiente de determinación)</strong>: indica qué tan bien el modelo explica las variaciones del precio. Un valor cercano a 1 es excelente.</li>
-    <li><strong>Precisión direccional</strong>: qué porcentaje de veces el modelo acierta la dirección del movimiento (sube o baja).</li>
-    <li><strong>Cobertura del intervalo de confianza</strong>: porcentaje de veces que el valor real cayó dentro del rango proyectado. Si está cerca del 95%, el modelo está bien calibrado.</li>
+    <li><strong>RMSE</strong>, <strong>MAE</strong>, <strong>MAPE</strong> y <strong>R²</strong> para validar la precisión de las predicciones.</li>
+    <li><strong>Precisión direccional</strong>: aciertos al predecir si el precio subirá o bajará.</li>
+    <li><strong>Cobertura del intervalo de confianza</strong>: qué tan frecuentemente el precio real cae dentro del rango proyectado.</li>
   </ul>
 
-  <h4 class="mt-4">🎯 ¿Por qué confiar en este modelo?</h4>
+  <h4 class="mt-4">🚦 ¿Cómo interpretar el semáforo?</h4>
   <ul>
-    <li>Utiliza datos reales del mercado y técnicas de análisis técnico.</li>
-    <li>Es replicable y transparente.</li>
-    <li>Brinda una estimación con margen de error y probabilidad asociada.</li>
-    <li>Permite decisiones más informadas para quienes siguen el ETF TQQQ.</li>
+    <li><strong>🟢 Verde</strong>: Señal de entrada favorable según los indicadores técnicos y la predicción.</li>
+    <li><strong>🟡 Amarillo</strong>: Zona de precaución; los datos son mixtos o inciertos.</li>
+    <li><strong>🔴 Rojo</strong>: Señal de salida o alerta; condiciones desfavorables según los análisis.</li>
   </ul>
 
+  <h4 class="mt-4">🎯 ¿Por qué confiar en este sistema?</h4>
+  <ul>
+    <li>Combina predicción cuantitativa y análisis técnico de forma transparente.</li>
+    <li>Evalúa múltiples ETFs y adapta las señales a cada uno.</li>
+    <li>Te ofrece herramientas visuales simples para facilitar decisiones de inversión.</li>
+  </ul>
 {% endblock %}

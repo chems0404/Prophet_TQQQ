@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
-{% block title %}Señal TQQQ{% endblock %}
+{% block title %}Señal SOXL{% endblock %}
 
 {% block content %}
-<h2 class="mb-4">Señal de inversión diaria - TQQQ</h2>
+<h2 class="mb-4">Señal de inversión diaria - SOXL</h2>
 
 <div class="card border-{{ color }} mb-4">
   <div class="card-header bg-{{ color }} text-white">
@@ -24,5 +24,5 @@
   ⚠️ Esta señal es solo una estimación basada en análisis técnico y no constituye una recomendación financiera.
 </p>
 
-<a href="{% url 'dashboard_tqqq' %}" class="btn btn-outline-primary">Volver al Dashboard TQQQ</a>
+<a href="{% url 'elegir_dashboard' %}" class="btn btn-outline-primary">Volver a elegir Dashboard</a>
 {% endblock %}
