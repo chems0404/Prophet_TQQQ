@@ -6,7 +6,7 @@
 
 <div class="card border-{{ color }} mb-4">
   <div class="card-header bg-{{ color }} text-white">
-    Recomendación del modelo
+    Recomendación del modelo técnico + Prophet
   </div>
   <div class="card-body">
     <h5 class="card-title">{{ recomendacion }}</h5>
@@ -14,14 +14,20 @@
       <strong>RSI actual:</strong> {{ rsi }} ({{ rsi_zone }})<br>
       <strong>MACD (señal momentum):</strong> {{ macd }}<br>
       <strong>CCI (tendencia reciente):</strong> {{ cci }}<br>
-      <strong>Dirección esperada:</strong> {{ direction }}<br>
-      <strong>¿Coincide con la de ayer?:</strong> {{ consistency|yesno:"Sí,No" }}
+      <strong>Predicción de Prophet:</strong> Se espera que mañana el precio 
+      {% if direction == "↑ Subida" %}suba
+      {% elif direction == "↓ Bajada" %}baje
+      {% else %}permanezca estable
+      {% endif %}
+      respecto al cierre de hoy.<br>
+      <strong>¿Coincide con el movimiento de ayer?:</strong> {{ consistency|yesno:"Sí,No" }}<br>
+      <strong>Puntaje ponderado total:</strong> {{ ponderado }}
     </p>
   </div>
 </div>
 
 <p class="mt-4 text-muted text-sm fst-italic">
-  ⚠️ Esta señal es solo una estimación basada en análisis técnico y no constituye una recomendación financiera.
+  📊 Esta señal ha sido generada mediante reglas técnicas con ponderación y apoyo del modelo Prophet. No constituye asesoramiento financiero.
 </p>
 
 <a href="{% url 'dashboard_tqqq' %}" class="btn btn-outline-primary">Volver al Dashboard TQQQ</a>

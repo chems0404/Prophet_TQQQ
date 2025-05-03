@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard QQQ{% endblock %}
+
+{% block content %}
+  <h2 class="mb-4">Dashboard de Prophet - QQQ</h2>
+
+  <!-- Botón para recalcular modelo -->
+  <form method="post" action="{% url 'recalcular' %}" class="mb-4 d-inline">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-warning">Recalcular modelo QQQ</button>
+  </form>
+
+  <!-- Botón para ver el semáforo de QQQ -->
+  <a href="{% url 'semaforo_qqq' %}" class="btn btn-success mb-4 ms-2">Ver señal del día (semáforo)</a>
+
+  <div class="row">
+    <div class="col-md-6 mb-4">
+      <h5>Serie completa vs Predicción</h5>
+      <img src="data:image/png;base64,{{ qqq_plot_full }}" class="img-fluid rounded">
+    </div>
+    <div class="col-md-6 mb-4">
+      <h5>Últimos 5 días & Predicción siguiente día</h5>
+      <img src="data:image/png;base64,{{ qqq_plot_recent }}" class="img-fluid rounded">
+    </div>
+  </div>
+
+  <h5>Métricas</h5>
+  <ul class="list-group mb-4">
+    <li class="list-group-item">RMSE: {{ qqq_metrics.rmse }}</li>
+    <li class="list-group-item">MAE: {{ qqq_metrics.mae }}</li>
+    <li class="list-group-item">MAPE: {{ qqq_metrics.mape }}%</li>
+    <li class="list-group-item">R²: {{ qqq_metrics.r2 }}</li>
+    <li class="list-group-item">Predicción para {{ qqq_metrics.target_date }}: {{ qqq_metrics.predicted_price }}</li>
+    <li class="list-group-item">IC dinámico 95%: [{{ qqq_metrics.lower_95 }}, {{ qqq_metrics.upper_95 }}]</li>
+    <li class="list-group-item">Precisión direccional: {{ qqq_metrics.directional_acc|floatformat:2 }}%</li>
+    <li class="list-group-item">Cobertura IC Estática: {{ qqq_metrics.coverage|floatformat:2 }}%</li>
+  </ul>
+
+  <p class="mt-4 text-muted text-sm fst-italic">
+    ⚠️ Esta predicción es solo una estimación basada en datos históricos y no constituye una recomendación de inversión.
+  </p>
+{% endblock %}

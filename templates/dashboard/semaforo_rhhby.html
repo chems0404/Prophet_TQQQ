@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
-{% block title %}Señal SOXL{% endblock %}
+{% block title %}Señal RHHBY{% endblock %}
 
 {% block content %}
-<h2 class="mb-4">Señal de inversión diaria - SOXL</h2>
+<h2 class="mb-4">Señal de inversión diaria - RHHBY</h2>
 
 <div class="card border-{{ color }} mb-4">
   <div class="card-header bg-{{ color }} text-white">
@@ -14,12 +14,8 @@
       <strong>RSI actual:</strong> {{ rsi }} ({{ rsi_zone }})<br>
       <strong>MACD (señal momentum):</strong> {{ macd }}<br>
       <strong>CCI (tendencia reciente):</strong> {{ cci }}<br>
-      <strong>Predicción de Prophet:</strong> Se espera que mañana el precio 
-      {% if direction == "↑ Subida" %}suba
-      {% elif direction == "↓ Bajada" %}baje
-      {% else %}permanezca estable
-      {% endif %}
-      respecto al cierre de hoy.<br>
+      <strong>Predicción de Prophet:</strong> Se espera que mañana el RHHBY 
+      {% if direction == "↑ Subida" %}suba{% elif direction == "↓ Bajada" %}baje{% else %}permanezca estable{% endif %}.<br>
       <strong>¿Coincide con el movimiento de ayer?:</strong> {{ consistency|yesno:"Sí,No" }}<br>
       <strong>Puntaje ponderado total:</strong> {{ ponderado }}
     </p>
@@ -27,8 +23,8 @@
 </div>
 
 <p class="mt-4 text-muted text-sm fst-italic">
-  ⚠️ Esta señal ha sido generada mediante reglas técnicas con ponderación y apoyo del modelo Prophet. No constituye asesoramiento financiero.
+  ⚠️ Esta señal ha sido generada mediante indicadores técnicos y la predicción del modelo Prophet. No constituye asesoramiento financiero.
 </p>
 
-<a href="{% url 'elegir_dashboard' %}" class="btn btn-outline-primary">Volver a elegir Dashboard</a>
+<a href="{% url 'dashboard_rhhby' %}" class="btn btn-outline-primary">Volver al Dashboard RHHBY</a>
 {% endblock %}
