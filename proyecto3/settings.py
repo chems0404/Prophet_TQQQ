@@ -1,32 +1,42 @@
 from pathlib import Path
 import os
 
+# 1) BASE_DIR
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# ¡NO subas esto a producción sin ocultarlo en .env!
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-j(%g6s#e7!jmlsryphs3a8goe5(ol*qgasornb=)9hxay8fm+y')
+# 2) SECRET_KEY y DEBUG desde entorno
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    raise RuntimeError("Define la variable de entorno DJANGO_SECRET_KEY")
 
-DEBUG = True # Producción = False
+DEBUG = os.getenv('DJANGO_DEBUG', 'True') == 'True'
 
-# Solo Render u otros dominios permitidos
-ALLOWED_HOSTS = ['.onrender.com', 'localhost', '127.0.0.1']
+# 3) Hosts permitidos
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '.onrender.com',  # acepta subdominios de onrender.com
+]
 
-# Apps instaladas
+# 4) APPS instaladas
 INSTALLED_APPS = [
+    # Tus apps
+    'accounts.apps.AccountsConfig',
+    'dashboard.apps.DashboardConfig',
+
+    # Django core
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'accounts',
-    'dashboard',
 ]
 
-# Middleware con WhiteNoise
+# 5) MIDDLEWARE
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',  # Soporte estáticos
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # sirve archivos estáticos
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -35,13 +45,16 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+# 6) URLs y WSGI
 ROOT_URLCONF = 'proyecto3.urls'
+WSGI_APPLICATION = 'proyecto3.wsgi.application'
 
+# 7) Templates
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [ BASE_DIR / 'templates' ],
-        'APP_DIRS': True,
+        'DIRS': [BASE_DIR / 'templates'],  # tus plantillas globales
+        'APP_DIRS': True,                  # busca en cada app
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.debug',
@@ -53,9 +66,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'proyecto3.wsgi.application'
-
-# SQLite (puedes migrar a PostgreSQL en producción)
+# 8) Base de datos (SQLite para desarrollo)
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -63,7 +74,7 @@ DATABASES = {
     }
 }
 
-# Validadores de contraseña
+# 9) Validadores de contraseña
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
@@ -71,24 +82,25 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-# Localización
+# 10) Internacionalización
 LANGUAGE_CODE = 'es'
-TIME_ZONE = 'America/Costa_Rica'  # Puedes ajustar
+TIME_ZONE = 'America/Costa_Rica'
 USE_I18N = True
+USE_L10N = True
 USE_TZ = True
 
-# Archivos estáticos
+# 11) Archivos estáticos
 STATIC_URL = '/static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# Redirecciones tras login/logout
+# 12) Redirecciones tras login/logout
 LOGIN_REDIRECT_URL = 'elegir_dashboard'
 LOGOUT_REDIRECT_URL = 'login'
 
-# Emails a consola
+# 13) Configuración de email (solo consola en dev)
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 DEFAULT_FROM_EMAIL = 'webmaster@localhost'
 
-# Código de invitación (seguridad básica)
-INVITATION_CODE = os.getenv('INVITATION_CODE', 'TQQQ2025')
+# 14) Auto field por defecto (Django ≥3.2)
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
