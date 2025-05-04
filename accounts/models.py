@@ -8,7 +8,7 @@ class Company(models.Model):
     """
     Representa una empresa que puede tener varios códigos de invitación.
     """
-    name = models.CharField("Nombre de la empresa", max_length=200, unique=True)
+    name = models.CharField("CQISA", max_length=200, unique=True)
 
     def __str__(self):
         return self.name
