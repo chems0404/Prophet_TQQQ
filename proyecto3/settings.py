@@ -12,6 +12,7 @@ if not SECRET_KEY:
 DEBUG = False
 
 
+
 # 3) Hosts permitidos
 ALLOWED_HOSTS = [
     'localhost',
@@ -106,3 +107,10 @@ DEFAULT_FROM_EMAIL = 'webmaster@localhost'
 
 # 14) Auto field por defecto (Django ≥3.2)
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# 15) Preparación automática para Render (evita errores con collectstatic)
+RENDER = os.getenv('RENDER', None)
+if RENDER:
+    # Fuerza la ejecución de collectstatic sin prompt
+    os.environ['DJANGO_COLLECTSTATIC'] = '1'
+
