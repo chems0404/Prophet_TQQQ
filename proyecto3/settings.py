@@ -9,7 +9,8 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
 if not SECRET_KEY:
     raise RuntimeError("Define la variable de entorno DJANGO_SECRET_KEY")
 
-DEBUG = os.getenv('DJANGO_DEBUG', 'True') == 'True'
+DEBUG = False
+
 
 # 3) Hosts permitidos
 ALLOWED_HOSTS = [
