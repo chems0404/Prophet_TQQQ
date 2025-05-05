@@ -230,10 +230,10 @@ def get_tqqq_signal():
 
     # Cálculo del puntaje total ponderado
     score = (
-        0.25 * rsi_score +
-        0.35 * macd_score +
-        0.25 * cci_score +
-        0.15 * prophet_score
+        0.2 * rsi_score +
+        0.2 * macd_score +
+        0.2 * cci_score +
+        0.4 * prophet_score
     )
 
     # Umbrales de decisión
@@ -470,10 +470,10 @@ def get_upro_signal():
 
     # 5. Puntaje ponderado
     score = (
-        0.25 * rsi_score +
-        0.35 * macd_score +
-        0.25 * cci_score +
-        0.15 * prophet_score
+        0.2 * rsi_score +
+        0.2 * macd_score +
+        0.2 * cci_score +
+        0.4 * prophet_score
     )
 
     # 6. Decisión final
@@ -683,10 +683,10 @@ def get_soxl_signal():
 
     # 7. Puntaje ponderado
     score = (
-        0.25 * rsi_score +
-        0.35 * macd_score +
-        0.25 * cci_score +
-        0.15 * prophet_score
+        0.2 * rsi_score +
+        0.2 * macd_score +
+        0.2 * cci_score +
+        0.4 * prophet_score
     )
 
     # 8. Decisión final
@@ -885,10 +885,10 @@ def get_qqq_signal():
     prophet_score = 1 if pred > last_close else 0
 
     score = (
-        0.25 * rsi_score +
-        0.35 * macd_score +
-        0.25 * cci_score +
-        0.15 * prophet_score
+        0.2 * rsi_score +
+        0.2 * macd_score +
+        0.2 * cci_score +
+        0.4 * prophet_score
     )
 
     if score > 0.7:
@@ -1082,10 +1082,10 @@ def get_rhhby_signal():
     prophet_score = 1 if pred > last_close else 0
 
     score = (
-        0.25 * rsi_score +
-        0.35 * macd_score +
-        0.25 * cci_score +
-        0.15 * prophet_score
+        0.2 * rsi_score +
+        0.2 * macd_score +
+        0.2 * cci_score +
+        0.4 * prophet_score
     )
 
     if score > 0.7:
