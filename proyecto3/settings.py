@@ -107,3 +107,8 @@ DEFAULT_FROM_EMAIL = 'webmaster@localhost'
 
 # 14) Auto field por defecto
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# 15) Seguridad para producción (CSRF y cookies sobre HTTPS)
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
+CSRF_FAILURE_VIEW = 'django.views.csrf.csrf_failure'
