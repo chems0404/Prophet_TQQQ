@@ -15,12 +15,12 @@ DEBUG = False
 
 # 3) Hosts permitidos
 ALLOWED_HOSTS = [
+    '.railway.app',
+    'proyecto-prophet-tqqq-production.up.railway.app',
     'localhost',
     '127.0.0.1',
-    'https://proyecto-prophet-tqqq.onrender.com',
-    '.railway.app'
-    '.onrender.com',  # acepta subdominios de onrender.com
 ]
+
 
 # 4) APPS instaladas
 INSTALLED_APPS = [
