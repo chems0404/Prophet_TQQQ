@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import dj_database_url
 
 # 1) BASE_DIR
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -9,18 +10,16 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
 if not SECRET_KEY:
     raise RuntimeError("Define la variable de entorno DJANGO_SECRET_KEY")
 
-DEBUG = True
-
-
+DEBUG = os.getenv('DJANGO_DEBUG', 'False') == 'True'
 
 # 3) Hosts permitidos
 ALLOWED_HOSTS = [
     '.railway.app',
+    '.railway.internal',
     'proyecto-prophet-tqqq-production.up.railway.app',
     'localhost',
     '127.0.0.1',
 ]
-
 
 # 4) APPS instaladas
 INSTALLED_APPS = [
@@ -57,8 +56,8 @@ WSGI_APPLICATION = 'proyecto3.wsgi.application'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'],  # tus plantillas globales
-        'APP_DIRS': True,                  # busca en cada app
+        'DIRS': [BASE_DIR / 'templates'],
+        'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.debug',
@@ -70,12 +69,12 @@ TEMPLATES = [
     },
 ]
 
-# 8) Base de datos (SQLite para desarrollo)
+# 8) Base de datos: usa PostgreSQL en producción, SQLite en local
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        conn_max_age=600,
+    )
 }
 
 # 9) Validadores de contraseña
@@ -106,12 +105,5 @@ LOGOUT_REDIRECT_URL = 'login'
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 DEFAULT_FROM_EMAIL = 'webmaster@localhost'
 
-# 14) Auto field por defecto (Django ≥3.2)
+# 14) Auto field por defecto
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-# 15) Preparación automática para Render (evita errores con collectstatic)
-RENDER = os.getenv('RENDER', None)
-if RENDER:
-    # Fuerza la ejecución de collectstatic sin prompt
-    os.environ['DJANGO_COLLECTSTATIC'] = '1'
-
