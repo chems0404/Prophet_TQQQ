@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 import dj_database_url
+import logging
 
 # 1) BASE_DIR
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,7 +26,7 @@ ALLOWED_HOSTS = [
 INSTALLED_APPS = [
     # Tus apps
     'accounts.apps.AccountsConfig',
-    'dashboard.apps.DashboardConfig',
+    'dashboard.apps.DashboardConfig', 
 
     # Django core
     'django.contrib.admin',
@@ -70,12 +71,20 @@ TEMPLATES = [
 ]
 
 # 8) Base de datos: usa PostgreSQL en producción, SQLite en local
-DATABASES = {
-    'default': dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-        conn_max_age=600,
-    )
-}
+if os.environ.get('DATABASE_URL'):
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    print("DATABASE_URL:", DATABASE_URL)  # Para verificar que se esté leyendo correctamente
+    DATABASES = {
+        'default': dj_database_url.config(default=DATABASE_URL, conn_max_age=600)
+    }
+else:
+    # Si no está configurada, usar SQLite en desarrollo local
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # 9) Validadores de contraseña
 AUTH_PASSWORD_VALIDATORS = [
@@ -114,3 +123,21 @@ SESSION_COOKIE_SECURE = True
 CSRF_FAILURE_VIEW = 'django.views.csrf.csrf_failure'
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+# 16) Configuración de logging para obtener más detalles
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}
