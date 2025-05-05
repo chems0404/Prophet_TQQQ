@@ -25,3 +25,7 @@ if username and email and password:
 else:
     print("⚠️ Variables de entorno ADMIN_USER, ADMIN_EMAIL o ADMIN_PASS no definidas.")
 END
+
+# Asegurarse de que Gunicorn se ejecute en segundo plano
+echo "▶ Iniciando la aplicación con Gunicorn..."
+exec gunicorn proyecto3.wsgi:application --bind 0.0.0.0:8000
