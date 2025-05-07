@@ -1113,3 +1113,189 @@ def get_rhhby_signal():
         'color': color,
         'ponderado': round(score, 2)
     }
+
+@lru_cache(maxsize=1)
+def run_btc_prophet_and_plot():
+    # Cargar BTC
+    df = pd.read_csv(BASE_DIR / 'data' / 'BTC_data.csv', parse_dates=['Date'])
+    df = df.rename(columns={'Date': 'ds', 'BTC.USD.Close': 'y'})
+    df.sort_values('ds', inplace=True)
+
+    # Indicadores BTC
+    df['btc_return'] = np.log(df['y'] / df['y'].shift(1))
+    df['y_lag1'] = df['y'].shift(1)
+    df['y_lag2'] = df['y'].shift(2)
+    df['log_y'] = np.log(df['y'])
+
+    # Cargar IBIT
+    ibit = pd.read_csv(BASE_DIR / 'data' / 'IBIT_data.csv', parse_dates=['Date'])
+    ibit = ibit.rename(columns={'Date': 'ds'})
+    ibit['ibit_return'] = np.log(ibit['IBIT.Close'] / ibit['IBIT.Close'].shift(1))
+    ibit['ibit_lag1'] = ibit['IBIT.Close'].shift(1)
+
+    # Merge
+    df = pd.merge(df, ibit[['ds', 'IBIT.Close', 'ibit_return', 'ibit_lag1']], on='ds')
+    df = df.rename(columns={'IBIT.Close': 'ibit_close'})
+    df.dropna(inplace=True)
+
+    # Regresores
+    regs = ['btc_return', 'y_lag1', 'y_lag2', 'ibit_close', 'ibit_return', 'ibit_lag1']
+
+    # Prophet
+    model = Prophet(
+        daily_seasonality=False,
+        weekly_seasonality=True,
+        seasonality_mode='multiplicative',
+        changepoint_prior_scale=0.05
+    )
+    for r in regs:
+        model.add_regressor(r)
+    model.fit(df[['ds', 'log_y'] + regs].rename(columns={'log_y': 'y'}))
+
+    # Forecast
+    future = model.make_future_dataframe(periods=7, freq='B').set_index('ds')
+    hist = df.set_index('ds').reindex(future.index)
+    win = 5
+    for col in regs:
+        future[col] = hist[col].fillna(df[col].rolling(win).mean().iloc[-1])
+    future = future.reset_index()
+    forecast = model.predict(future)
+    forecast['yhat'] = np.exp(forecast['yhat'])
+    forecast['yhat_lower'] = np.exp(forecast['yhat_lower'])
+    forecast['yhat_upper'] = np.exp(forecast['yhat_upper'])
+
+    # Métricas
+    df_pred = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].merge(df[['ds', 'y']], on='ds', how='inner')
+    df_pred['residual'] = df_pred['y'] - df_pred['yhat']
+    df_pred['vol_ewma'] = df_pred['residual'].ewm(span=30).std()
+    df_pred['std_resid'] = df_pred['residual'] / df_pred['vol_ewma']
+    z_95 = np.nanpercentile(np.abs(df_pred['std_resid']), 95)
+
+    cutoff = df['ds'].max() - pd.Timedelta(days=90)
+    train = df[df['ds'] < cutoff]
+    test = df[df['ds'] >= cutoff]
+    model_bt = Prophet(daily_seasonality=False, weekly_seasonality=True)
+    for r in regs:
+        model_bt.add_regressor(r)
+    model_bt.fit(train[['ds', 'log_y'] + regs].rename(columns={'log_y': 'y'}))
+    fc_bt = model_bt.predict(test[['ds'] + regs])
+    fc_bt['yhat'] = np.exp(fc_bt['yhat'])
+    bt = fc_bt[['ds', 'yhat']].merge(test[['ds', 'y']], on='ds')
+    y_true, y_pred = bt['y'], bt['yhat']
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae = mean_absolute_error(y_true, y_pred)
+    mape = (np.abs((y_true - y_pred) / y_true).mean()) * 100
+    r2 = r2_score(y_true, y_pred)
+    coverage = ((df_pred['y'] >= df_pred['yhat_lower']) & (df_pred['y'] <= df_pred['yhat_upper'])).mean()
+
+    df_perf = df_pred.copy()
+    df_perf['actual_dir'] = df_perf['y'].diff()
+    df_perf['pred_dir'] = df_perf['yhat'] - df_perf['y'].shift(1)
+    directional_acc = (np.sign(df_perf['actual_dir']) == np.sign(df_perf['pred_dir'])).dropna().mean()
+
+    today = pd.to_datetime(datetime.now().date())
+    target = today if today.weekday() < 5 else today + BDay(1)
+    last5 = df[df['ds'] < target].sort_values('ds').tail(5)
+    last_row = df[df['ds'] < target].iloc[-1]
+    future_t = pd.DataFrame({'ds': [target]})
+    for r in regs:
+        future_t[r] = last_row[r]
+    pred_t = model.predict(future_t)[['ds', 'yhat']]
+    pred_t['yhat'] = np.exp(pred_t['yhat'])
+    pred_t = pred_t.merge(df_pred[['ds', 'vol_ewma']], on='ds', how='left')
+    pred_t['vol_ewma'] = pred_t['vol_ewma'].fillna(df_pred['vol_ewma'].iloc[-1])
+    pred_t['lower_95'] = pred_t['yhat'] - z_95 * pred_t['vol_ewma']
+    pred_t['upper_95'] = pred_t['yhat'] + z_95 * pred_t['vol_ewma']
+
+    # Plot 1
+    buf1 = BytesIO()
+    plt.figure(figsize=(14, 6))
+    plt.plot(df['ds'], df['y'], 'k.', alpha=0.6, label='Real')
+    plt.plot(forecast['ds'], forecast['yhat'], label='Predicción')
+    plt.fill_between(forecast['ds'], forecast['yhat_lower'], forecast['yhat_upper'], alpha=0.3, label='IC 95%')
+    plt.legend(); plt.tight_layout()
+    plt.savefig(buf1, format='png'); plt.close(); buf1.seek(0)
+    img1 = base64.b64encode(buf1.read()).decode()
+
+    # Plot 2
+    recent_preds = pd.concat([
+        forecast[forecast['ds'].isin(last5['ds'])][['ds', 'yhat']],
+        pred_t[['ds', 'yhat']]
+    ], ignore_index=True).sort_values('ds')
+    buf2 = BytesIO()
+    plt.figure(figsize=(10, 6))
+    plt.plot(last5['ds'], last5['y'], 'o-', label='Real', color='#1f77b4')
+    plt.plot(recent_preds['ds'], recent_preds['yhat'], '--', label='Predicción', color='#ff7f0e')
+    plt.scatter(recent_preds['ds'], recent_preds['yhat'], color='#ff7f0e')
+    for x, y in zip(recent_preds['ds'], recent_preds['yhat']):
+        plt.text(x, y, f"{y:.2f}", ha='center', va='bottom', fontsize=9)
+    plt.legend(); plt.tight_layout()
+    plt.savefig(buf2, format='png'); plt.close(); buf2.seek(0)
+    img2 = base64.b64encode(buf2.read()).decode()
+
+    return {
+        'metrics': {
+            'rmse': rmse,
+            'mae': mae,
+            'mape': mape,
+            'r2': r2,
+            'coverage': coverage * 100,
+            'directional_acc': directional_acc * 100,
+            'predicted_price': float(pred_t.at[0, 'yhat']),
+            'lower_95': float(pred_t.at[0, 'lower_95']),
+            'upper_95': float(pred_t.at[0, 'upper_95']),
+            'target_date': target.date()
+        },
+        'plot_full': img1,
+        'plot_recent': img2
+    }
+@lru_cache(maxsize=1)
+def get_btc_signal():
+    df = pd.read_csv(BASE_DIR / 'data' / 'BTC_data.csv', parse_dates=['Date'])
+    df.sort_values('Date', inplace=True)
+    df = df.rename(columns={'Date': 'ds', 'BTC.USD.Close': 'close'})
+
+    rsi = RSIIndicator(close=df['close'], window=14).rsi()
+    macd = MACD(close=df['close']).macd_diff()
+    cci = CCIIndicator(high=df['BTC.USD.High'], low=df['BTC.USD.Low'], close=df['close'], window=20).cci()
+
+
+    rsi_value = rsi.iloc[-1]
+    macd_value = macd.iloc[-1]
+    cci_value = cci.iloc[-1]
+
+    rsi_score = 1 if 30 < rsi_value < 60 else 0
+    macd_score = 1 if macd_value > 0 else 0
+    cci_score = 1 if cci_value > 0 else 0
+
+    pred = run_btc_prophet_and_plot()['metrics']['predicted_price']
+    last_close = df['close'].iloc[-1]
+    prophet_score = 1 if pred > last_close else 0
+
+    score = 0.2 * rsi_score + 0.2 * macd_score + 0.2 * cci_score + 0.4 * prophet_score
+
+    if score > 0.7:
+        recomendacion = 'Posible entrada'
+        color = 'success'
+    elif score < 0.3:
+        recomendacion = 'Evitar entrada'
+        color = 'danger'
+    else:
+        recomendacion = 'Esperar'
+        color = 'warning'
+
+    direction = '↑ Subida' if prophet_score == 1 else '↓ Bajada'
+    prev_close = df['close'].iloc[-2]
+    consistency = (np.sign(pred - last_close) == np.sign(last_close - prev_close))
+
+    return {
+        'rsi': round(rsi_value, 2),
+        'rsi_zone': 'Sobreventa' if rsi_value < 30 else 'Operable' if rsi_value < 60 else 'Sobrecompra',
+        'macd': round(macd_value, 2),
+        'cci': round(cci_value, 2),
+        'direction': direction,
+        'consistency': consistency,
+        'recomendacion': recomendacion,
+        'color': color,
+        'ponderado': round(score, 2)
+    }

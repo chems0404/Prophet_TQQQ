@@ -6,11 +6,13 @@ from .utils import (
     run_upro_prophet_and_plot,
     run_soxl_prophet_and_plot,
     run_qqq_prophet_and_plot,
+    run_btc_prophet_and_plot,         # ← NUEVO
     run_rhhby_prophet_and_plot,  # <-- Añadido
     get_tqqq_signal,
     get_upro_signal,
     get_soxl_signal,
     get_qqq_signal,
+    get_btc_signal,                  # ← NUEVO
     get_rhhby_signal            # <-- Añadido
 )
 
@@ -125,4 +127,21 @@ def dashboard_rhhby_view(request):
 def semaforo_rhhby_view(request):
     context = get_rhhby_signal()
     return render(request, 'dashboard/semaforo_rhhby.html', context)
+
+@login_required
+def dashboard_btc_view(request):
+    btc_output = run_btc_prophet_and_plot()
+
+    context = {
+        'btc_plot_full': btc_output['plot_full'],
+        'btc_plot_recent': btc_output['plot_recent'],
+        'btc_metrics': btc_output['metrics'],
+    }
+
+    return render(request, 'dashboard/dashboard_btc.html', context)
+@login_required
+def semaforo_btc_view(request):
+    context = get_btc_signal()
+    return render(request, 'dashboard/semaforo_btc.html', context)
+
 
