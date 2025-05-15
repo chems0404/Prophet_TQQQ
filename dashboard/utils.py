@@ -12,6 +12,7 @@ from ta.momentum import StochasticOscillator, RSIIndicator, ROCIndicator
 from ta.trend import CCIIndicator, MACD
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from datetime import datetime
 from pandas.tseries.offsets import BDay
 from functools import lru_cache
@@ -27,7 +28,6 @@ from ta.volatility import AverageTrueRange
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 
 @lru_cache(maxsize=1)
 def run_prophet_and_plot():
@@ -47,9 +47,9 @@ def run_prophet_and_plot():
 
     # 2. Cargar y preparar QQQ
     qqq = (
-    pd.read_csv(BASE_DIR / 'data' / 'QQQ_data.csv', parse_dates=['Date'])
-    .rename(columns={'Date': 'ds', 'QQQ.Close': 'qqq_close'})
-)
+        pd.read_csv(BASE_DIR / 'data' / 'QQQ_data.csv', parse_dates=['Date'])
+        .rename(columns={'Date': 'ds', 'QQQ.Close': 'qqq_close'})
+    )
     qqq['qqq_return'] = np.log(qqq['qqq_close'] / qqq['qqq_close'].shift(1))
 
     # 3. Merge + rezagos
@@ -58,15 +58,15 @@ def run_prophet_and_plot():
     df['y_lag2'] = df['y'].shift(2)
     df.dropna(inplace=True)
 
-    # 4. Entrenar modelo
     regs = ['stoch_k','stoch_d','qqq_close','qqq_return','y_lag1','y_lag2']
-    model = Prophet(
-    daily_seasonality=False,
-    weekly_seasonality=True,
-    seasonality_mode='multiplicative',
-    changepoint_prior_scale=0.05
-)
 
+    # 4. Entrenar Prophet
+    model = Prophet(
+        daily_seasonality=False,
+        weekly_seasonality=True,
+        seasonality_mode='multiplicative',
+        changepoint_prior_scale=0.05
+    )
     for r in regs:
         model.add_regressor(r)
     model.fit(df[['ds','y'] + regs])
@@ -85,88 +85,75 @@ def run_prophet_and_plot():
     forecast = model.predict(future)
 
     # 6. Unir predicción + reales
-    df_pred = forecast[['ds','yhat','yhat_lower','yhat_upper']].merge(
-        df[['ds','y']], on='ds', how='inner')
+    df_pred = forecast[['ds','yhat','yhat_lower','yhat_upper']].merge(df[['ds','y']], on='ds', how='inner')
     df_pred['residual'] = df_pred['y'] - df_pred['yhat']
-    df_pred['vol_ewma'] = df_pred['residual'].ewm(span=30).std()
-    df_pred['std_resid'] = df_pred['residual'] / df_pred['vol_ewma']
 
-    # 7. Calibrar z para IC 95%
-    z_95 = np.nanpercentile(np.abs(df_pred['std_resid']), 95)
+    # 7. Ajustar con Random Forest sobre residuos
+    X_resid = df_pred.merge(df.set_index('ds')[regs], on='ds')[regs]
+    y_resid = df_pred['residual']
+    rf = RandomForestRegressor(n_estimators=200, max_depth=5, min_samples_leaf=5, random_state=42)
+    rf.fit(X_resid, y_resid)
+    X_future = future.set_index('ds').loc[forecast['ds'], regs]
+    resid_pred = rf.predict(X_future)
+    forecast['yhat_adj'] = forecast['yhat'] + resid_pred
 
-    # 8. Backtest 90 días → métricas
-    cutoff = df['ds'].max() - pd.Timedelta(days=90)
-    train = df[df['ds'] < cutoff]
-    test  = df[df['ds'] >= cutoff]
-    model_bt = Prophet(daily_seasonality=False, weekly_seasonality=True)
-    for r in regs:
-        model_bt.add_regressor(r)
-    model_bt.fit(train[['ds','y'] + regs])
-    fc_bt = model_bt.predict(test[['ds'] + regs])
-    bt = fc_bt[['ds','yhat']].merge(test[['ds','y']], on='ds')
-    y_true, y_pred = bt['y'], bt['yhat']
+    # 8. Métricas de rendimiento
+    df_stack = forecast[['ds','yhat_adj']].merge(df[['ds','y']], on='ds', how='inner')
+    y_true = df_stack['y']; y_pred = df_stack['yhat_adj']
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     mae  = mean_absolute_error(y_true, y_pred)
     mape = (np.abs((y_true - y_pred) / y_true).mean()) * 100
     r2   = r2_score(y_true, y_pred)
 
-    # 9. Cobertura IC estático
-    coverage = ((df_pred['y'] >= df_pred['yhat_lower']) &
-                (df_pred['y'] <= df_pred['yhat_upper'])).mean()
+    in_interval = (df_stack['y'] >= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_lower'].values) & \
+                  (df_stack['y'] <= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_upper'].values)
+    coverage = in_interval.mean() * 100
 
-    # 10. Precisión direccional
-    df_perf = df_pred.copy()
-    df_perf['actual_dir'] = df_perf['y'].diff()
-    df_perf['pred_dir']   = df_perf['yhat'] - df_perf['y'].shift(1)
-    directional_acc = (np.sign(df_perf['actual_dir']) == np.sign(df_perf['pred_dir'])).dropna().mean()
+    df_stack['actual_change'] = df_stack['y'].diff()
+    df_stack['predicted_change'] = df_stack['yhat_adj'].diff()
+    directional_acc = (np.sign(df_stack['actual_change']) == np.sign(df_stack['predicted_change'])).iloc[1:].mean() * 100
 
-    # 11. Predicción siguiente día hábil + últimos 5 días
+    # 9. Predicción del siguiente día
     today = pd.to_datetime(datetime.now().date())
     target = today if today.weekday() < 5 else today + BDay(1)
-    last5 = df[df['ds'] < target].sort_values('ds').tail(5)
-
     future_t = pd.DataFrame({'ds': [target]})
     last_row = df[df['ds'] < target].iloc[-1]
     for r in regs:
         future_t[r] = last_row[r]
-    pred_t = model.predict(future_t)[['ds','yhat']]
-    pred_t = pred_t.merge(df_pred[['ds','vol_ewma']], on='ds', how='left')
-    pred_t['vol_ewma'] = pred_t['vol_ewma'].fillna(df_pred['vol_ewma'].iloc[-1])
-    pred_t['lower_95'] = pred_t['yhat'] - z_95 * pred_t['vol_ewma']
-    pred_t['upper_95'] = pred_t['yhat'] + z_95 * pred_t['vol_ewma']
+    base_pred = model.predict(future_t).iloc[0]
+    yhat_t = base_pred['yhat'] + rf.predict(future_t[regs])[0]
+    lower = base_pred['yhat_lower']
+    upper = base_pred['yhat_upper']
 
-    # 12. recent_preds para gráfico reciente
-    recent_preds = pd.concat([
-        forecast[forecast['ds'].isin(last5['ds'])][['ds','yhat','yhat_lower','yhat_upper']],
-        pred_t[['ds','yhat','lower_95','upper_95']]
-    ], ignore_index=True).sort_values('ds')
-
-    # 13. Gráfico completo
+    # 10. Gráfico completo
     buf1 = BytesIO()
     plt.figure(figsize=(14,6))
     plt.plot(df['ds'], df['y'], 'k.', alpha=0.6, label='Real')
-    plt.plot(forecast['ds'], forecast['yhat'], label='Predicción')
+    plt.plot(forecast['ds'], forecast['yhat_adj'], label='Predicción ajustada')
     plt.fill_between(forecast['ds'], forecast['yhat_lower'], forecast['yhat_upper'], alpha=0.3, label='IC 95%')
     plt.legend(); plt.tight_layout()
     plt.savefig(buf1, format='png'); plt.close(); buf1.seek(0)
     img1 = base64.b64encode(buf1.read()).decode()
 
-    # 14. Gráfico recientes con errorbars para todos los puntos
+    # 11. Gráfico recientes con errorbars
+    last5 = df[df['ds'] < target].sort_values('ds').tail(5)
+    recent_preds = forecast[forecast['ds'].isin(last5['ds'])][['ds','yhat_adj','yhat_lower','yhat_upper']]
+    recent_preds = pd.concat([
+        recent_preds,
+        pd.DataFrame({'ds':[target], 'yhat_adj':[yhat_t],
+                      'yhat_lower':[lower], 'yhat_upper':[upper]})
+    ], ignore_index=True).sort_values('ds')
     buf2 = BytesIO()
     plt.figure(figsize=(10,6))
-    # Series real
     plt.plot(last5['ds'], last5['y'], 'o-', label='Real', color='#1f77b4')
-    # Predicción con líneas y puntos
-    plt.plot(recent_preds['ds'], recent_preds['yhat'], '--', label='Predicción', color='#ff7f0e')
-    plt.scatter(recent_preds['ds'], recent_preds['yhat'], color='#ff7f0e')
-    # Etiquetas de valor
-    for x, y in zip(recent_preds['ds'], recent_preds['yhat']):
+    plt.plot(recent_preds['ds'], recent_preds['yhat_adj'], '--', label='Predicción', color='#ff7f0e')
+    plt.scatter(recent_preds['ds'], recent_preds['yhat_adj'], color='#ff7f0e')
+    for x, y in zip(recent_preds['ds'], recent_preds['yhat_adj']):
         plt.text(x, y, f"{y:.2f}", ha='center', va='bottom', fontsize=9, fontfamily='sans-serif')
-    # Barras de error para cada punto
-    err_lower = recent_preds['yhat'] - recent_preds['lower_95']
-    err_upper = recent_preds['upper_95'] - recent_preds['yhat']
+    err_lower = recent_preds['yhat_adj'] - recent_preds['yhat_lower']
+    err_upper = recent_preds['yhat_upper'] - recent_preds['yhat_adj']
     plt.errorbar(
-        recent_preds['ds'], recent_preds['yhat'],
+        recent_preds['ds'], recent_preds['yhat_adj'],
         yerr=[err_lower, err_upper],
         fmt='none', ecolor='#2ca02c', capsize=5, label='IC dinámico 95%'
     )
@@ -174,17 +161,17 @@ def run_prophet_and_plot():
     plt.savefig(buf2, format='png'); plt.close(); buf2.seek(0)
     img2 = base64.b64encode(buf2.read()).decode()
 
-    # 15. Métricas finales sin gráficos de pie
+    # 12. Métricas finales empaquetadas
     metrics = {
         'rmse': rmse,
         'mae': mae,
         'mape': mape,
         'r2': r2,
-        'coverage': coverage*100,
-        'directional_acc': directional_acc*100,
-        'predicted_price': float(pred_t.at[0, 'yhat']),
-        'lower_95': float(pred_t.at[0, 'lower_95']),
-        'upper_95': float(pred_t.at[0, 'upper_95']),
+        'coverage': coverage,
+        'directional_acc': directional_acc,
+        'predicted_price': float(yhat_t),
+        'lower_95': float(lower),
+        'upper_95': float(upper),
         'target_date': target.date(),
     }
 
@@ -193,6 +180,7 @@ def run_prophet_and_plot():
         'plot_full': img1,
         'plot_recent': img2
     }
+
 
 @lru_cache(maxsize=1)
 def get_tqqq_signal():
@@ -298,15 +286,14 @@ def run_upro_prophet_and_plot():
     df['y_lag2'] = df['y'].shift(2)
     df.dropna(inplace=True)
 
-    # 4. Entrenar modelo
+    # 4. Entrenar modelo Prophet
     regs = ['stoch_k','stoch_d','spy_close','spy_return','y_lag1','y_lag2']
     model = Prophet(
-    daily_seasonality=False,
-    weekly_seasonality=True,
-    seasonality_mode='multiplicative',
-    changepoint_prior_scale=0.05
-)
-
+        daily_seasonality=False,
+        weekly_seasonality=True,
+        seasonality_mode='multiplicative',
+        changepoint_prior_scale=0.05
+    )
     for r in regs:
         model.add_regressor(r)
     model.fit(df[['ds','y'] + regs])
@@ -324,43 +311,32 @@ def run_upro_prophet_and_plot():
     future = future.reset_index()
     forecast = model.predict(future)
 
-    # 6. Unir predicción + reales
-    df_pred = forecast[['ds','yhat','yhat_lower','yhat_upper']].merge(
-        df[['ds','y']], on='ds', how='inner')
+    # 6. Unir predicción + reales y ajustar con RF
+    df_pred = forecast[['ds','yhat','yhat_lower','yhat_upper']].merge(df[['ds','y']], on='ds', how='inner')
     df_pred['residual'] = df_pred['y'] - df_pred['yhat']
-    df_pred['vol_ewma'] = df_pred['residual'].ewm(span=30).std()
-    df_pred['std_resid'] = df_pred['residual'] / df_pred['vol_ewma']
+    X_resid = df_pred.merge(df.set_index('ds')[regs], on='ds')[regs]
+    y_resid = df_pred['residual']
+    rf = RandomForestRegressor(n_estimators=200, max_depth=5, min_samples_leaf=5, random_state=42)
+    rf.fit(X_resid, y_resid)
+    X_future = future.set_index('ds').loc[forecast['ds'], regs]
+    resid_pred = rf.predict(X_future)
+    forecast['yhat_adj'] = forecast['yhat'] + resid_pred
 
-    # 7. Calibrar z para IC 95%
-    z_95 = np.nanpercentile(np.abs(df_pred['std_resid']), 95)
-
-    # 8. Backtest 90 días
-    cutoff = df['ds'].max() - pd.Timedelta(days=90)
-    train = df[df['ds'] < cutoff]
-    test  = df[df['ds'] >= cutoff]
-    model_bt = Prophet(daily_seasonality=False, weekly_seasonality=True)
-    for r in regs:
-        model_bt.add_regressor(r)
-    model_bt.fit(train[['ds','y'] + regs])
-    fc_bt = model_bt.predict(test[['ds'] + regs])
-    bt = fc_bt[['ds','yhat']].merge(test[['ds','y']], on='ds')
-    y_true, y_pred = bt['y'], bt['yhat']
+    # 7. Métricas
+    df_stack = forecast[['ds','yhat_adj']].merge(df[['ds','y']], on='ds', how='inner')
+    y_true = df_stack['y']; y_pred = df_stack['yhat_adj']
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     mae  = mean_absolute_error(y_true, y_pred)
     mape = (np.abs((y_true - y_pred) / y_true).mean()) * 100
     r2   = r2_score(y_true, y_pred)
+    in_interval = (df_stack['y'] >= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_lower'].values) & \
+                  (df_stack['y'] <= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_upper'].values)
+    coverage = in_interval.mean() * 100
+    df_stack['actual_change'] = df_stack['y'].diff()
+    df_stack['predicted_change'] = df_stack['yhat_adj'].diff()
+    directional_acc = (np.sign(df_stack['actual_change']) == np.sign(df_stack['predicted_change'])).iloc[1:].mean() * 100
 
-    # 9. Cobertura IC
-    coverage = ((df_pred['y'] >= df_pred['yhat_lower']) & 
-                (df_pred['y'] <= df_pred['yhat_upper'])).mean()
-
-    # 10. Precisión direccional
-    df_perf = df_pred.copy()
-    df_perf['actual_dir'] = df_perf['y'].diff()
-    df_perf['pred_dir']   = df_perf['yhat'] - df_perf['y'].shift(1)
-    directional_acc = (np.sign(df_perf['actual_dir']) == np.sign(df_perf['pred_dir'])).dropna().mean()
-
-    # 11. Predicción día hábil siguiente
+    # 8. Predicción día hábil siguiente
     today = pd.to_datetime(datetime.now().date())
     target = today if today.weekday() < 5 else today + BDay(1)
     last5 = df[df['ds'] < target].sort_values('ds').tail(5)
@@ -369,40 +345,39 @@ def run_upro_prophet_and_plot():
     last_row = df[df['ds'] < target].iloc[-1]
     for r in regs:
         future_t[r] = last_row[r]
-    pred_t = model.predict(future_t)[['ds','yhat']]
-    pred_t = pred_t.merge(df_pred[['ds','vol_ewma']], on='ds', how='left')
-    pred_t['vol_ewma'] = pred_t['vol_ewma'].fillna(df_pred['vol_ewma'].iloc[-1])
-    pred_t['lower_95'] = pred_t['yhat'] - z_95 * pred_t['vol_ewma']
-    pred_t['upper_95'] = pred_t['yhat'] + z_95 * pred_t['vol_ewma']
+    base_pred = model.predict(future_t).iloc[0]
+    yhat_t = base_pred['yhat'] + rf.predict(future_t[regs])[0]
+    lower = base_pred['yhat_lower']
+    upper = base_pred['yhat_upper']
 
-    # 12. recent_preds
-    recent_preds = pd.concat([
-        forecast[forecast['ds'].isin(last5['ds'])][['ds','yhat','yhat_lower','yhat_upper']],
-        pred_t[['ds','yhat','lower_95','upper_95']]
-    ], ignore_index=True).sort_values('ds')
-
-    # 13. Gráfico completo
+    # 9. Gráfico completo
     buf1 = BytesIO()
     plt.figure(figsize=(14,6))
     plt.plot(df['ds'], df['y'], 'k.', alpha=0.6, label='Real')
-    plt.plot(forecast['ds'], forecast['yhat'], label='Predicción')
+    plt.plot(forecast['ds'], forecast['yhat_adj'], label='Predicción ajustada')
     plt.fill_between(forecast['ds'], forecast['yhat_lower'], forecast['yhat_upper'], alpha=0.3, label='IC 95%')
     plt.legend(); plt.tight_layout()
     plt.savefig(buf1, format='png'); plt.close(); buf1.seek(0)
     img1 = base64.b64encode(buf1.read()).decode()
 
-    # 14. Gráfico recientes
+    # 10. Gráfico recientes
+    recent_preds = forecast[forecast['ds'].isin(last5['ds'])][['ds','yhat_adj','yhat_lower','yhat_upper']]
+    recent_preds = pd.concat([
+        recent_preds,
+        pd.DataFrame({'ds':[target], 'yhat_adj':[yhat_t],
+                      'yhat_lower':[lower], 'yhat_upper':[upper]})
+    ], ignore_index=True).sort_values('ds')
     buf2 = BytesIO()
     plt.figure(figsize=(10,6))
     plt.plot(last5['ds'], last5['y'], 'o-', label='Real', color='#1f77b4')
-    plt.plot(recent_preds['ds'], recent_preds['yhat'], '--', label='Predicción', color='#ff7f0e')
-    plt.scatter(recent_preds['ds'], recent_preds['yhat'], color='#ff7f0e')
-    for x, y in zip(recent_preds['ds'], recent_preds['yhat']):
+    plt.plot(recent_preds['ds'], recent_preds['yhat_adj'], '--', label='Predicción', color='#ff7f0e')
+    plt.scatter(recent_preds['ds'], recent_preds['yhat_adj'], color='#ff7f0e')
+    for x, y in zip(recent_preds['ds'], recent_preds['yhat_adj']):
         plt.text(x, y, f"{y:.2f}", ha='center', va='bottom', fontsize=9, fontfamily='sans-serif')
-    err_lower = recent_preds['yhat'] - recent_preds['lower_95']
-    err_upper = recent_preds['upper_95'] - recent_preds['yhat']
+    err_lower = (recent_preds['yhat_adj'] - recent_preds['yhat_lower']).clip(lower=0).fillna(0)
+    err_upper = (recent_preds['yhat_upper'] - recent_preds['yhat_adj']).clip(lower=0).fillna(0)
     plt.errorbar(
-        recent_preds['ds'], recent_preds['yhat'],
+        recent_preds['ds'], recent_preds['yhat_adj'],
         yerr=[err_lower, err_upper],
         fmt='none', ecolor='#2ca02c', capsize=5, label='IC dinámico 95%'
     )
@@ -410,17 +385,17 @@ def run_upro_prophet_and_plot():
     plt.savefig(buf2, format='png'); plt.close(); buf2.seek(0)
     img2 = base64.b64encode(buf2.read()).decode()
 
-    # 15. Métricas finales
+    # 11. Métricas finales
     metrics = {
         'rmse': rmse,
         'mae': mae,
         'mape': mape,
         'r2': r2,
-        'coverage': coverage*100,
-        'directional_acc': directional_acc*100,
-        'predicted_price': float(pred_t.at[0, 'yhat']),
-        'lower_95': float(pred_t.at[0, 'lower_95']),
-        'upper_95': float(pred_t.at[0, 'upper_95']),
+        'coverage': coverage,
+        'directional_acc': directional_acc,
+        'predicted_price': float(yhat_t),
+        'lower_95': float(lower),
+        'upper_95': float(upper),
         'target_date': target.date(),
     }
 
@@ -429,6 +404,7 @@ def run_upro_prophet_and_plot():
         'plot_full': img1,
         'plot_recent': img2
     }
+
 
 @lru_cache(maxsize=1)
 def get_upro_signal():
@@ -550,39 +526,32 @@ def run_soxl_prophet_and_plot():
     future = future.reset_index()
     forecast = model.predict(future)
 
-    # 5. Combinar predicción con reales
-    df_pred = forecast[['ds','yhat','yhat_lower','yhat_upper']].merge(
-        soxl[['ds','y']], on='ds', how='inner')
+    # 5. Ajustar con RF sobre residuos
+    df_pred = forecast[['ds','yhat','yhat_lower','yhat_upper']].merge(soxl[['ds','y']], on='ds', how='inner')
     df_pred['residual'] = df_pred['y'] - df_pred['yhat']
-    df_pred['vol_ewma'] = df_pred['residual'].ewm(span=30).std()
-    df_pred['std_resid'] = df_pred['residual'] / df_pred['vol_ewma']
+    X_resid = df_pred.merge(soxl.set_index('ds')[regs], on='ds')[regs]
+    y_resid = df_pred['residual']
+    rf = RandomForestRegressor(n_estimators=200, max_depth=5, min_samples_leaf=5, random_state=42)
+    rf.fit(X_resid, y_resid)
+    X_future = future.set_index('ds').loc[forecast['ds'], regs]
+    resid_pred = rf.predict(X_future)
+    forecast['yhat_adj'] = forecast['yhat'] + resid_pred
 
-    # 6. Calibrar z para IC
-    z_95 = np.nanpercentile(np.abs(df_pred['std_resid']), 95)
+    # 6. Métricas
+    df_stack = forecast[['ds','yhat_adj']].merge(soxl[['ds','y']], on='ds', how='inner')
+    y_true = df_stack['y']; y_pred = df_stack['yhat_adj']
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae = mean_absolute_error(y_true, y_pred)
+    mape = (np.abs((y_true - y_pred) / y_true).mean()) * 100
+    r2 = r2_score(y_true, y_pred)
+    in_interval = (df_stack['y'] >= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_lower'].values) & \
+                  (df_stack['y'] <= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_upper'].values)
+    coverage = in_interval.mean() * 100
+    df_stack['actual_change'] = df_stack['y'].diff()
+    df_stack['predicted_change'] = df_stack['yhat_adj'].diff()
+    directional_acc = (np.sign(df_stack['actual_change']) == np.sign(df_stack['predicted_change'])).iloc[1:].mean() * 100
 
-    # 7. Backtest 90 días
-    cutoff = soxl['ds'].max() - pd.Timedelta(days=90)
-    train = soxl[soxl['ds'] < cutoff]
-    test = soxl[soxl['ds'] >= cutoff]
-    model_bt = Prophet(daily_seasonality=False, weekly_seasonality=True)
-    for r in regs:
-        model_bt.add_regressor(r)
-    model_bt.fit(train[['ds','y'] + regs])
-    fc_bt = model_bt.predict(test[['ds'] + regs])
-    bt = fc_bt[['ds','yhat']].merge(test[['ds','y']], on='ds')
-    rmse = np.sqrt(mean_squared_error(bt['y'], bt['yhat']))
-    mae = mean_absolute_error(bt['y'], bt['yhat'])
-    mape = (np.abs((bt['y'] - bt['yhat']) / bt['y']).mean()) * 100
-    r2 = r2_score(bt['y'], bt['yhat'])
-
-    # 8. Cobertura IC y precisión direccional
-    coverage = ((df_pred['y'] >= df_pred['yhat_lower']) & (df_pred['y'] <= df_pred['yhat_upper'])).mean()
-    df_perf = df_pred.copy()
-    df_perf['actual_dir'] = df_perf['y'].diff()
-    df_perf['pred_dir'] = df_perf['yhat'] - df_perf['y'].shift(1)
-    directional_acc = (np.sign(df_perf['actual_dir']) == np.sign(df_perf['pred_dir'])).dropna().mean()
-
-    # 9. Predicción siguiente día hábil
+    # 7. Predicción siguiente día hábil
     today = pd.to_datetime(datetime.now().date())
     target = today if today.weekday() < 5 else today + BDay(1)
     last5 = soxl[soxl['ds'] < target].sort_values('ds').tail(5)
@@ -590,17 +559,16 @@ def run_soxl_prophet_and_plot():
     last_row = soxl[soxl['ds'] < target].iloc[-1]
     for r in regs:
         future_t[r] = last_row[r]
-    pred_t = model.predict(future_t)[['ds','yhat']]
-    pred_t = pred_t.merge(df_pred[['ds','vol_ewma']], on='ds', how='left')
-    pred_t['vol_ewma'] = pred_t['vol_ewma'].fillna(df_pred['vol_ewma'].iloc[-1])
-    pred_t['lower_95'] = pred_t['yhat'] - z_95 * pred_t['vol_ewma']
-    pred_t['upper_95'] = pred_t['yhat'] + z_95 * pred_t['vol_ewma']
+    base_pred = model.predict(future_t).iloc[0]
+    yhat_t = base_pred['yhat'] + rf.predict(future_t[regs])[0]
+    lower = base_pred['yhat_lower']
+    upper = base_pred['yhat_upper']
 
-    # 10. Graficar
+    # 8. Graficar
     buf1 = BytesIO()
     plt.figure(figsize=(14,6))
     plt.plot(soxl['ds'], soxl['y'], 'k.', alpha=0.6, label='Real')
-    plt.plot(forecast['ds'], forecast['yhat'], label='Predicción')
+    plt.plot(forecast['ds'], forecast['yhat_adj'], label='Predicción ajustada')
     plt.fill_between(forecast['ds'], forecast['yhat_lower'], forecast['yhat_upper'], alpha=0.3, label='IC 95%')
     plt.legend(); plt.tight_layout()
     plt.savefig(buf1, format='png'); plt.close(); buf1.seek(0)
@@ -609,27 +577,38 @@ def run_soxl_prophet_and_plot():
     buf2 = BytesIO()
     plt.figure(figsize=(10,6))
     plt.plot(last5['ds'], last5['y'], 'o-', label='Real', color='#1f77b4')
-    plt.plot([*last5['ds'], target], [*last5['y'].values, pred_t['yhat'].iloc[0]], '--', color='#ff7f0e', label='Predicción')
-    plt.scatter(target, pred_t['yhat'], color='#ff7f0e')
-    yhat_val = pred_t['yhat'].values[0]
-    err_low = (yhat_val - pred_t['lower_95'].values[0])
-    err_up = (pred_t['upper_95'].values[0] - yhat_val)
-    plt.errorbar([target], [yhat_val], yerr=[[err_low], [err_up]], fmt='none', ecolor='#2ca02c', capsize=5, label='IC dinámico 95%')
+    recent_preds = forecast[forecast['ds'].isin(last5['ds'])][['ds','yhat_adj','yhat_lower','yhat_upper']]
+    recent_preds = pd.concat([
+        recent_preds,
+        pd.DataFrame({'ds':[target], 'yhat_adj':[yhat_t],
+                      'yhat_lower':[lower], 'yhat_upper':[upper]})
+    ], ignore_index=True).sort_values('ds')
+    plt.plot(recent_preds['ds'], recent_preds['yhat_adj'], '--', color='#ff7f0e', label='Predicción')
+    plt.scatter(recent_preds['ds'], recent_preds['yhat_adj'], color='#ff7f0e')
+    for x, y in zip(recent_preds['ds'], recent_preds['yhat_adj']):
+        plt.text(x, y, f"{y:.2f}", ha='center', va='bottom', fontsize=9, fontfamily='sans-serif')
+    err_lower = (recent_preds['yhat_adj'] - recent_preds['yhat_lower']).clip(lower=0).fillna(0)
+    err_upper = (recent_preds['yhat_upper'] - recent_preds['yhat_adj']).clip(lower=0).fillna(0)
+    plt.errorbar(
+        recent_preds['ds'], recent_preds['yhat_adj'],
+        yerr=[err_lower, err_upper],
+        fmt='none', ecolor='#2ca02c', capsize=5, label='IC dinámico 95%'
+    )
     plt.legend(); plt.tight_layout()
     plt.savefig(buf2, format='png'); plt.close(); buf2.seek(0)
     img2 = base64.b64encode(buf2.read()).decode()
 
-    # 11. Métricas
+    # 9. Métricas
     metrics = {
         'rmse': rmse,
         'mae': mae,
         'mape': mape,
         'r2': r2,
-        'coverage': coverage*100,
-        'directional_acc': directional_acc*100,
-        'predicted_price': float(pred_t.at[0, 'yhat']),
-        'lower_95': float(pred_t.at[0, 'lower_95']),
-        'upper_95': float(pred_t.at[0, 'upper_95']),
+        'coverage': coverage,
+        'directional_acc': directional_acc,
+        'predicted_price': float(yhat_t),
+        'lower_95': float(lower),
+        'upper_95': float(upper),
         'target_date': target.date(),
     }
 
@@ -745,7 +724,7 @@ def run_qqq_prophet_and_plot():
     df = df.rename(columns={'TQQQ.Close': 'tqqq_close'})
     df.dropna(inplace=True)
 
-    # 4. Entrenar modelo
+    # 4. Entrenar modelo Prophet
     regs = ['qqq_return', 'y_lag1', 'y_lag2', 'stoch_k', 'stoch_d',
             'tqqq_close', 'tqqq_return', 'tqqq_lag1', 'tqqq_stoch_k', 'tqqq_stoch_d']
 
@@ -768,41 +747,32 @@ def run_qqq_prophet_and_plot():
     future = future.reset_index()
     forecast = model.predict(future)
 
-    # 6. Unir predicciones
-    df_pred = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].merge(
-        df[['ds', 'y']], on='ds', how='inner'
-    )
+    # 6. Ajustar con RF
+    df_pred = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].merge(df[['ds', 'y']], on='ds', how='inner')
     df_pred['residual'] = df_pred['y'] - df_pred['yhat']
-    df_pred['vol_ewma'] = df_pred['residual'].ewm(span=30).std()
-    df_pred['std_resid'] = df_pred['residual'] / df_pred['vol_ewma']
-    z_95 = np.nanpercentile(np.abs(df_pred['std_resid']), 95)
+    X_resid = df_pred.merge(df.set_index('ds')[regs], on='ds')[regs]
+    y_resid = df_pred['residual']
+    rf = RandomForestRegressor(n_estimators=200, max_depth=5, min_samples_leaf=5, random_state=42)
+    rf.fit(X_resid, y_resid)
+    X_future = future.set_index('ds').loc[forecast['ds'], regs]
+    resid_pred = rf.predict(X_future)
+    forecast['yhat_adj'] = forecast['yhat'] + resid_pred
 
-    # 7. Backtest
-    cutoff = df['ds'].max() - pd.Timedelta(days=90)
-    train = df[df['ds'] < cutoff]
-    test = df[df['ds'] >= cutoff]
-
-    model_bt = Prophet(daily_seasonality=False, weekly_seasonality=True)
-    for r in regs:
-        model_bt.add_regressor(r)
-    model_bt.fit(train[['ds', 'y'] + regs])
-    fc_bt = model_bt.predict(test[['ds'] + regs])
-    bt = fc_bt[['ds', 'yhat']].merge(test[['ds', 'y']], on='ds')
-    y_true, y_pred = bt['y'], bt['yhat']
+    # 7. Métricas
+    df_stack = forecast[['ds','yhat_adj']].merge(df[['ds','y']], on='ds', how='inner')
+    y_true = df_stack['y']; y_pred = df_stack['yhat_adj']
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     mae = mean_absolute_error(y_true, y_pred)
     mape = (np.abs((y_true - y_pred) / y_true).mean()) * 100
     r2 = r2_score(y_true, y_pred)
+    in_interval = (df_stack['y'] >= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_lower'].values) & \
+                  (df_stack['y'] <= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_upper'].values)
+    coverage = in_interval.mean() * 100
+    df_stack['actual_change'] = df_stack['y'].diff()
+    df_stack['predicted_change'] = df_stack['yhat_adj'].diff()
+    directional_acc = (np.sign(df_stack['actual_change']) == np.sign(df_stack['predicted_change'])).iloc[1:].mean() * 100
 
-    # 8. Métricas adicionales
-    coverage = ((df_pred['y'] >= df_pred['yhat_lower']) &
-                (df_pred['y'] <= df_pred['yhat_upper'])).mean()
-    df_perf = df_pred.copy()
-    df_perf['actual_dir'] = df_perf['y'].diff()
-    df_perf['pred_dir'] = df_perf['yhat'] - df_perf['y'].shift(1)
-    directional_acc = (np.sign(df_perf['actual_dir']) == np.sign(df_perf['pred_dir'])).dropna().mean()
-
-    # 9. Predicción siguiente día hábil
+    # 8. Predicción siguiente día hábil
     today = pd.to_datetime(datetime.now().date())
     target = today if today.weekday() < 5 else today + BDay(1)
     last5 = df[df['ds'] < target].sort_values('ds').tail(5)
@@ -810,33 +780,40 @@ def run_qqq_prophet_and_plot():
     future_t = pd.DataFrame({'ds': [target]})
     for r in regs:
         future_t[r] = last_row[r]
-    pred_t = model.predict(future_t)[['ds', 'yhat']]
-    pred_t = pred_t.merge(df_pred[['ds', 'vol_ewma']], on='ds', how='left')
-    pred_t['vol_ewma'] = pred_t['vol_ewma'].fillna(df_pred['vol_ewma'].iloc[-1])
-    pred_t['lower_95'] = pred_t['yhat'] - z_95 * pred_t['vol_ewma']
-    pred_t['upper_95'] = pred_t['yhat'] + z_95 * pred_t['vol_ewma']
+    base_pred = model.predict(future_t).iloc[0]
+    yhat_t = base_pred['yhat'] + rf.predict(future_t[regs])[0]
+    lower = base_pred['yhat_lower']
+    upper = base_pred['yhat_upper']
 
-    # 10. Gráficos
+    # 9. Gráficos
     buf1 = BytesIO()
     plt.figure(figsize=(14, 6))
     plt.plot(df['ds'], df['y'], 'k.', alpha=0.6, label='Real')
-    plt.plot(forecast['ds'], forecast['yhat'], label='Predicción')
+    plt.plot(forecast['ds'], forecast['yhat_adj'], label='Predicción ajustada')
     plt.fill_between(forecast['ds'], forecast['yhat_lower'], forecast['yhat_upper'], alpha=0.3, label='IC 95%')
     plt.legend(); plt.tight_layout()
     plt.savefig(buf1, format='png'); plt.close(); buf1.seek(0)
     img1 = base64.b64encode(buf1.read()).decode()
 
+    recent_preds = forecast[forecast['ds'].isin(last5['ds'])][['ds', 'yhat_adj', 'yhat_lower', 'yhat_upper']]
     recent_preds = pd.concat([
-        forecast[forecast['ds'].isin(last5['ds'])][['ds', 'yhat']],
-        pred_t[['ds', 'yhat']]
+        recent_preds,
+        pd.DataFrame({'ds': [target], 'yhat_adj': [yhat_t], 'yhat_lower': [lower], 'yhat_upper': [upper]})
     ], ignore_index=True).sort_values('ds')
     buf2 = BytesIO()
     plt.figure(figsize=(10, 6))
     plt.plot(last5['ds'], last5['y'], 'o-', label='Real', color='#1f77b4')
-    plt.plot(recent_preds['ds'], recent_preds['yhat'], '--', label='Predicción', color='#ff7f0e')
-    plt.scatter(recent_preds['ds'], recent_preds['yhat'], color='#ff7f0e')
-    for x, y in zip(recent_preds['ds'], recent_preds['yhat']):
+    plt.plot(recent_preds['ds'], recent_preds['yhat_adj'], '--', label='Predicción', color='#ff7f0e')
+    plt.scatter(recent_preds['ds'], recent_preds['yhat_adj'], color='#ff7f0e')
+    for x, y in zip(recent_preds['ds'], recent_preds['yhat_adj']):
         plt.text(x, y, f"{y:.2f}", ha='center', va='bottom', fontsize=9)
+    err_lower = (recent_preds['yhat_adj'] - recent_preds['yhat_lower']).clip(lower=0).fillna(0)
+    err_upper = (recent_preds['yhat_upper'] - recent_preds['yhat_adj']).clip(lower=0).fillna(0)
+    plt.errorbar(
+        recent_preds['ds'], recent_preds['yhat_adj'],
+        yerr=[err_lower, err_upper],
+        fmt='none', ecolor='#2ca02c', capsize=5, label='IC dinámico 95%'
+    )
     plt.legend(); plt.tight_layout()
     plt.savefig(buf2, format='png'); plt.close(); buf2.seek(0)
     img2 = base64.b64encode(buf2.read()).decode()
@@ -849,11 +826,11 @@ def run_qqq_prophet_and_plot():
             'mae': mae,
             'mape': mape,
             'r2': r2,
-            'coverage': coverage * 100,
-            'directional_acc': directional_acc * 100,
-            'predicted_price': float(pred_t.at[0, 'yhat']),
-            'lower_95': float(pred_t.at[0, 'lower_95']),
-            'upper_95': float(pred_t.at[0, 'upper_95']),
+            'coverage': coverage,
+            'directional_acc': directional_acc,
+            'predicted_price': float(yhat_t),
+            'lower_95': float(lower),
+            'upper_95': float(upper),
             'target_date': target.date()
         }
     }
@@ -920,43 +897,33 @@ def get_qqq_signal():
 
 @lru_cache(maxsize=1)
 def run_rhhby_prophet_and_plot():
-    # Cargar RHHBY
+
+    # 1. Cargar datos
     df = pd.read_csv(BASE_DIR / 'data' / 'RHHBY_data.csv', parse_dates=['Date'])
     df = df.rename(columns={'Date': 'ds', 'RHHBY.Close': 'y'})
     df.sort_values('ds', inplace=True)
 
-    # Indicadores RHHBY (sin técnicos)
     df['rhhby_return'] = np.log(df['y'] / df['y'].shift(1))
     df['y_lag1'] = df['y'].shift(1)
     df['y_lag2'] = df['y'].shift(2)
     df['log_y'] = np.log(df['y'])
 
-    # Cargar XLV
     xlv = pd.read_csv(BASE_DIR / 'data' / 'XLV_data.csv', parse_dates=['Date'])
     xlv = xlv.rename(columns={'Date': 'ds'})
     xlv['xlv_return'] = np.log(xlv['XLV.Close'] / xlv['XLV.Close'].shift(1))
     xlv['xlv_lag1'] = xlv['XLV.Close'].shift(1)
 
-    # Merge
     df = pd.merge(df, xlv[['ds', 'XLV.Close', 'xlv_return', 'xlv_lag1']], on='ds')
     df = df.rename(columns={'XLV.Close': 'xlv_close'})
     df.dropna(inplace=True)
 
-    # Regresores
     regs = ['rhhby_return', 'y_lag1', 'y_lag2', 'xlv_close', 'xlv_return', 'xlv_lag1']
 
-    # Prophet
-    model = Prophet(
-        daily_seasonality=False,
-        weekly_seasonality=True,
-        seasonality_mode='multiplicative',
-        changepoint_prior_scale=0.05
-    )
+    model = Prophet(daily_seasonality=False, weekly_seasonality=True, seasonality_mode='multiplicative', changepoint_prior_scale=0.05)
     for r in regs:
         model.add_regressor(r)
     model.fit(df[['ds', 'log_y'] + regs].rename(columns={'log_y': 'y'}))
 
-    # Forecast
     future = model.make_future_dataframe(periods=7, freq='B').set_index('ds')
     hist = df.set_index('ds').reindex(future.index)
     win = 5
@@ -964,40 +931,36 @@ def run_rhhby_prophet_and_plot():
         future[col] = hist[col].fillna(df[col].rolling(win).mean().iloc[-1])
     future = future.reset_index()
     forecast = model.predict(future)
+
     forecast['yhat'] = np.exp(forecast['yhat'])
     forecast['yhat_lower'] = np.exp(forecast['yhat_lower'])
     forecast['yhat_upper'] = np.exp(forecast['yhat_upper'])
 
-    df_pred = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].merge(
-        df[['ds', 'y']], on='ds', how='inner'
-    )
+    df_pred = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].merge(df[['ds', 'y']], on='ds', how='inner')
     df_pred['residual'] = df_pred['y'] - df_pred['yhat']
-    df_pred['vol_ewma'] = df_pred['residual'].ewm(span=30).std()
-    df_pred['std_resid'] = df_pred['residual'] / df_pred['vol_ewma']
-    z_95 = np.nanpercentile(np.abs(df_pred['std_resid']), 95)
 
-    cutoff = df['ds'].max() - pd.Timedelta(days=90)
-    train = df[df['ds'] < cutoff]
-    test = df[df['ds'] >= cutoff]
+    X_resid = df_pred.merge(df.set_index('ds')[regs], on='ds')[regs]
+    y_resid = df_pred['residual']
+    rf = RandomForestRegressor(n_estimators=200, max_depth=5, min_samples_leaf=5, random_state=42)
+    rf.fit(X_resid, y_resid)
+    X_future = future.set_index('ds').loc[forecast['ds'], regs]
+    resid_pred = rf.predict(X_future)
+    forecast['yhat_adj'] = forecast['yhat'] + resid_pred
 
-    model_bt = Prophet(daily_seasonality=False, weekly_seasonality=True)
-    for r in regs:
-        model_bt.add_regressor(r)
-    model_bt.fit(train[['ds', 'log_y'] + regs].rename(columns={'log_y': 'y'}))
-    fc_bt = model_bt.predict(test[['ds'] + regs])
-    fc_bt['yhat'] = np.exp(fc_bt['yhat'])
-    bt = fc_bt[['ds', 'yhat']].merge(test[['ds', 'y']], on='ds')
-    y_true, y_pred = bt['y'], bt['yhat']
+    df_stack = forecast[['ds', 'yhat_adj']].merge(df[['ds', 'y']], on='ds', how='inner')
+    y_true = df_stack['y']
+    y_pred = df_stack['yhat_adj']
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     mae = mean_absolute_error(y_true, y_pred)
     mape = (np.abs((y_true - y_pred) / y_true).mean()) * 100
     r2 = r2_score(y_true, y_pred)
 
-    coverage = ((df_pred['y'] >= df_pred['yhat_lower']) & (df_pred['y'] <= df_pred['yhat_upper'])).mean()
-    df_perf = df_pred.copy()
-    df_perf['actual_dir'] = df_perf['y'].diff()
-    df_perf['pred_dir'] = df_perf['yhat'] - df_perf['y'].shift(1)
-    directional_acc = (np.sign(df_perf['actual_dir']) == np.sign(df_perf['pred_dir'])).dropna().mean()
+    in_interval = (df_stack['y'] >= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_lower'].values) & \
+                  (df_stack['y'] <= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_upper'].values)
+    coverage = in_interval.mean() * 100
+    df_stack['actual_change'] = df_stack['y'].diff()
+    df_stack['predicted_change'] = df_stack['yhat_adj'].diff()
+    directional_acc = (np.sign(df_stack['actual_change']) == np.sign(df_stack['predicted_change'])).iloc[1:].mean() * 100
 
     today = pd.to_datetime(datetime.now().date())
     target = today if today.weekday() < 5 else today + BDay(1)
@@ -1006,33 +969,39 @@ def run_rhhby_prophet_and_plot():
     future_t = pd.DataFrame({'ds': [target]})
     for r in regs:
         future_t[r] = last_row[r]
-    pred_t = model.predict(future_t)[['ds', 'yhat']]
-    pred_t['yhat'] = np.exp(pred_t['yhat'])
-    pred_t = pred_t.merge(df_pred[['ds', 'vol_ewma']], on='ds', how='left')
-    pred_t['vol_ewma'] = pred_t['vol_ewma'].fillna(df_pred['vol_ewma'].iloc[-1])
-    pred_t['lower_95'] = pred_t['yhat'] - z_95 * pred_t['vol_ewma']
-    pred_t['upper_95'] = pred_t['yhat'] + z_95 * pred_t['vol_ewma']
+    base_pred = model.predict(future_t).iloc[0]
+    yhat_t = np.exp(base_pred['yhat']) + rf.predict(future_t[regs])[0]
+    lower = np.exp(base_pred['yhat_lower'])
+    upper = np.exp(base_pred['yhat_upper'])
 
     buf1 = BytesIO()
     plt.figure(figsize=(14, 6))
     plt.plot(df['ds'], df['y'], 'k.', alpha=0.6, label='Real')
-    plt.plot(forecast['ds'], forecast['yhat'], label='Predicción')
+    plt.plot(forecast['ds'], forecast['yhat_adj'], label='Predicción ajustada')
     plt.fill_between(forecast['ds'], forecast['yhat_lower'], forecast['yhat_upper'], alpha=0.3, label='IC 95%')
     plt.legend(); plt.tight_layout()
     plt.savefig(buf1, format='png'); plt.close(); buf1.seek(0)
     img1 = base64.b64encode(buf1.read()).decode()
 
+    recent_preds = forecast[forecast['ds'].isin(last5['ds'])][['ds', 'yhat_adj', 'yhat_lower', 'yhat_upper']]
     recent_preds = pd.concat([
-        forecast[forecast['ds'].isin(last5['ds'])][['ds', 'yhat']],
-        pred_t[['ds', 'yhat']]
+        recent_preds,
+        pd.DataFrame({'ds': [target], 'yhat_adj': [yhat_t], 'yhat_lower': [lower], 'yhat_upper': [upper]})
     ], ignore_index=True).sort_values('ds')
     buf2 = BytesIO()
     plt.figure(figsize=(10, 6))
     plt.plot(last5['ds'], last5['y'], 'o-', label='Real', color='#1f77b4')
-    plt.plot(recent_preds['ds'], recent_preds['yhat'], '--', label='Predicción', color='#ff7f0e')
-    plt.scatter(recent_preds['ds'], recent_preds['yhat'], color='#ff7f0e')
-    for x, y in zip(recent_preds['ds'], recent_preds['yhat']):
+    plt.plot(recent_preds['ds'], recent_preds['yhat_adj'], '--', label='Predicción', color='#ff7f0e')
+    plt.scatter(recent_preds['ds'], recent_preds['yhat_adj'], color='#ff7f0e')
+    for x, y in zip(recent_preds['ds'], recent_preds['yhat_adj']):
         plt.text(x, y, f"{y:.2f}", ha='center', va='bottom', fontsize=9)
+    err_lower = (recent_preds['yhat_adj'] - recent_preds['yhat_lower']).clip(lower=0).fillna(0)
+    err_upper = (recent_preds['yhat_upper'] - recent_preds['yhat_adj']).clip(lower=0).fillna(0)
+    plt.errorbar(
+        recent_preds['ds'], recent_preds['yhat_adj'],
+        yerr=[err_lower, err_upper],
+        fmt='none', ecolor='#2ca02c', capsize=5, label='IC dinámico 95%'
+    )
     plt.legend(); plt.tight_layout()
     plt.savefig(buf2, format='png'); plt.close(); buf2.seek(0)
     img2 = base64.b64encode(buf2.read()).decode()
@@ -1043,11 +1012,11 @@ def run_rhhby_prophet_and_plot():
             'mae': mae,
             'mape': mape,
             'r2': r2,
-            'coverage': coverage * 100,
-            'directional_acc': directional_acc * 100,
-            'predicted_price': float(pred_t.at[0, 'yhat']),
-            'lower_95': float(pred_t.at[0, 'lower_95']),
-            'upper_95': float(pred_t.at[0, 'upper_95']),
+            'coverage': coverage,
+            'directional_acc': directional_acc,
+            'predicted_price': float(yhat_t),
+            'lower_95': float(lower),
+            'upper_95': float(upper),
             'target_date': target.date()
         },
         'plot_full': img1,
@@ -1164,34 +1133,31 @@ def run_btc_prophet_and_plot():
     forecast['yhat_lower'] = np.exp(forecast['yhat_lower'])
     forecast['yhat_upper'] = np.exp(forecast['yhat_upper'])
 
-    # Métricas
+    # Ajuste con RF
     df_pred = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].merge(df[['ds', 'y']], on='ds', how='inner')
     df_pred['residual'] = df_pred['y'] - df_pred['yhat']
-    df_pred['vol_ewma'] = df_pred['residual'].ewm(span=30).std()
-    df_pred['std_resid'] = df_pred['residual'] / df_pred['vol_ewma']
-    z_95 = np.nanpercentile(np.abs(df_pred['std_resid']), 95)
+    X_resid = df_pred.merge(df.set_index('ds')[regs], on='ds')[regs]
+    y_resid = df_pred['residual']
+    rf = RandomForestRegressor(n_estimators=200, max_depth=5, min_samples_leaf=5, random_state=42)
+    rf.fit(X_resid, y_resid)
+    X_future = future.set_index('ds').loc[forecast['ds'], regs]
+    resid_pred = rf.predict(X_future)
+    forecast['yhat_adj'] = forecast['yhat'] + resid_pred
 
-    cutoff = df['ds'].max() - pd.Timedelta(days=90)
-    train = df[df['ds'] < cutoff]
-    test = df[df['ds'] >= cutoff]
-    model_bt = Prophet(daily_seasonality=False, weekly_seasonality=True)
-    for r in regs:
-        model_bt.add_regressor(r)
-    model_bt.fit(train[['ds', 'log_y'] + regs].rename(columns={'log_y': 'y'}))
-    fc_bt = model_bt.predict(test[['ds'] + regs])
-    fc_bt['yhat'] = np.exp(fc_bt['yhat'])
-    bt = fc_bt[['ds', 'yhat']].merge(test[['ds', 'y']], on='ds')
-    y_true, y_pred = bt['y'], bt['yhat']
+    # Métricas
+    df_stack = forecast[['ds','yhat_adj']].merge(df[['ds','y']], on='ds', how='inner')
+    y_true = df_stack['y']; y_pred = df_stack['yhat_adj']
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     mae = mean_absolute_error(y_true, y_pred)
     mape = (np.abs((y_true - y_pred) / y_true).mean()) * 100
     r2 = r2_score(y_true, y_pred)
-    coverage = ((df_pred['y'] >= df_pred['yhat_lower']) & (df_pred['y'] <= df_pred['yhat_upper'])).mean()
 
-    df_perf = df_pred.copy()
-    df_perf['actual_dir'] = df_perf['y'].diff()
-    df_perf['pred_dir'] = df_perf['yhat'] - df_perf['y'].shift(1)
-    directional_acc = (np.sign(df_perf['actual_dir']) == np.sign(df_perf['pred_dir'])).dropna().mean()
+    in_interval = (df_stack['y'] >= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_lower'].values) & \
+                  (df_stack['y'] <= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_upper'].values)
+    coverage = in_interval.mean() * 100
+    df_stack['actual_change'] = df_stack['y'].diff()
+    df_stack['predicted_change'] = df_stack['yhat_adj'].diff()
+    directional_acc = (np.sign(df_stack['actual_change']) == np.sign(df_stack['predicted_change'])).iloc[1:].mean() * 100
 
     today = pd.to_datetime(datetime.now().date())
     target = today if today.weekday() < 5 else today + BDay(1)
@@ -1200,35 +1166,40 @@ def run_btc_prophet_and_plot():
     future_t = pd.DataFrame({'ds': [target]})
     for r in regs:
         future_t[r] = last_row[r]
-    pred_t = model.predict(future_t)[['ds', 'yhat']]
-    pred_t['yhat'] = np.exp(pred_t['yhat'])
-    pred_t = pred_t.merge(df_pred[['ds', 'vol_ewma']], on='ds', how='left')
-    pred_t['vol_ewma'] = pred_t['vol_ewma'].fillna(df_pred['vol_ewma'].iloc[-1])
-    pred_t['lower_95'] = pred_t['yhat'] - z_95 * pred_t['vol_ewma']
-    pred_t['upper_95'] = pred_t['yhat'] + z_95 * pred_t['vol_ewma']
+    base_pred = model.predict(future_t).iloc[0]
+    yhat_t = np.exp(base_pred['yhat']) + rf.predict(future_t[regs])[0]
+    lower = np.exp(base_pred['yhat_lower'])
+    upper = np.exp(base_pred['yhat_upper'])
 
     # Plot 1
     buf1 = BytesIO()
     plt.figure(figsize=(14, 6))
     plt.plot(df['ds'], df['y'], 'k.', alpha=0.6, label='Real')
-    plt.plot(forecast['ds'], forecast['yhat'], label='Predicción')
+    plt.plot(forecast['ds'], forecast['yhat_adj'], label='Predicción ajustada')
     plt.fill_between(forecast['ds'], forecast['yhat_lower'], forecast['yhat_upper'], alpha=0.3, label='IC 95%')
     plt.legend(); plt.tight_layout()
     plt.savefig(buf1, format='png'); plt.close(); buf1.seek(0)
     img1 = base64.b64encode(buf1.read()).decode()
 
-    # Plot 2
+    recent_preds = forecast[forecast['ds'].isin(last5['ds'])][['ds', 'yhat_adj', 'yhat_lower', 'yhat_upper']]
     recent_preds = pd.concat([
-        forecast[forecast['ds'].isin(last5['ds'])][['ds', 'yhat']],
-        pred_t[['ds', 'yhat']]
+        recent_preds,
+        pd.DataFrame({'ds': [target], 'yhat_adj': [yhat_t], 'yhat_lower': [lower], 'yhat_upper': [upper]})
     ], ignore_index=True).sort_values('ds')
     buf2 = BytesIO()
     plt.figure(figsize=(10, 6))
     plt.plot(last5['ds'], last5['y'], 'o-', label='Real', color='#1f77b4')
-    plt.plot(recent_preds['ds'], recent_preds['yhat'], '--', label='Predicción', color='#ff7f0e')
-    plt.scatter(recent_preds['ds'], recent_preds['yhat'], color='#ff7f0e')
-    for x, y in zip(recent_preds['ds'], recent_preds['yhat']):
+    plt.plot(recent_preds['ds'], recent_preds['yhat_adj'], '--', label='Predicción', color='#ff7f0e')
+    plt.scatter(recent_preds['ds'], recent_preds['yhat_adj'], color='#ff7f0e')
+    for x, y in zip(recent_preds['ds'], recent_preds['yhat_adj']):
         plt.text(x, y, f"{y:.2f}", ha='center', va='bottom', fontsize=9)
+    err_lower = (recent_preds['yhat_adj'] - recent_preds['yhat_lower']).clip(lower=0).fillna(0)
+    err_upper = (recent_preds['yhat_upper'] - recent_preds['yhat_adj']).clip(lower=0).fillna(0)
+    plt.errorbar(
+        recent_preds['ds'], recent_preds['yhat_adj'],
+        yerr=[err_lower, err_upper],
+        fmt='none', ecolor='#2ca02c', capsize=5, label='IC dinámico 95%'
+    )
     plt.legend(); plt.tight_layout()
     plt.savefig(buf2, format='png'); plt.close(); buf2.seek(0)
     img2 = base64.b64encode(buf2.read()).decode()
@@ -1239,11 +1210,11 @@ def run_btc_prophet_and_plot():
             'mae': mae,
             'mape': mape,
             'r2': r2,
-            'coverage': coverage * 100,
-            'directional_acc': directional_acc * 100,
-            'predicted_price': float(pred_t.at[0, 'yhat']),
-            'lower_95': float(pred_t.at[0, 'lower_95']),
-            'upper_95': float(pred_t.at[0, 'upper_95']),
+            'coverage': coverage,
+            'directional_acc': directional_acc,
+            'predicted_price': float(yhat_t),
+            'lower_95': float(lower),
+            'upper_95': float(upper),
             'target_date': target.date()
         },
         'plot_full': img1,
