@@ -23,8 +23,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score
 from sklearn.tree import DecisionTreeClassifier
 from ta.volatility import AverageTrueRange
-import yfinance as yf
-from datetime import datetime
+
 
 
 
