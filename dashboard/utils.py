@@ -18,12 +18,13 @@ from pandas.tseries.offsets import BDay
 from functools import lru_cache
 from pathlib import Path
 from django.conf import settings
-from ta.momentum import RSIIndicator, ROCIndicator
 from ta.trend import CCIIndicator
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score
 from sklearn.tree import DecisionTreeClassifier
 from ta.volatility import AverageTrueRange
+import yfinance as yf
+from datetime import datetime
 
 
 
