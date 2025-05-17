@@ -4,43 +4,42 @@
 {% block content %}
   <h2 class="mb-4">¿Cómo funciona el sistema de predicción y señales?</h2>
 
-  <p>Este dashboard combina modelos de predicción y análisis técnico para ayudarte a tomar mejores decisiones de inversión sobre ETFs como <strong>TQQQ</strong>, <strong>UPRO</strong> y <strong>SOXL</strong>. A continuación, te explicamos cómo funciona:</p>
+  <p>Este dashboard integra modelos de series temporales con técnicas de aprendizaje automático para analizar y proyectar el comportamiento de ETFs como <strong>TQQQ</strong>, <strong>UPRO</strong> y <strong>SOXL</strong>. A continuación se describe su funcionamiento:</p>
 
-  <h4 class="mt-4">📈 Datos utilizados</h4>
+  <h4 class="mt-4">Datos utilizados</h4>
   <ul>
-    <li>Histórico de precios y retornos diarios de TQQQ, UPRO y SOXL</li>
-    <li>Precios de referencia de los ETFs subyacentes (QQQ, SPY, etc.)</li>
-    <li>Indicadores técnicos: <strong>RSI</strong>, <strong>MACD</strong>, <strong>CCI</strong></li>
-    <li>Volumen escalado y rezagos del precio</li>
+    <li>Históricos de precios y retornos diarios de los ETFs objetivo.</li>
+    <li>Precios y retornos de los ETFs subyacentes (ej. QQQ, SPY).</li>
+    <li>Indicadores técnicos: <strong>RSI</strong>, <strong>MACD</strong>, <strong>CCI</strong>.</li>
+    <li>Volumen normalizado y rezagos del precio como variables adicionales.</li>
   </ul>
 
-  <h4 class="mt-4">🧠 ¿Qué hace el modelo?</h4>
+  <h4 class="mt-4">Modelo predictivo y corrección</h4>
   <ul>
-    <li>Entrena modelos de series temporales como <strong>Prophet</strong> para cada ETF.</li>
-    <li>Predice los precios futuros a corto plazo (30 días hábiles).</li>
-    <li>Ajusta los intervalos de confianza con base en la volatilidad reciente.</li>
-    <li>Evalúa las condiciones técnicas del mercado con indicadores RSI, MACD y CCI.</li>
-    <li>Genera una señal visual tipo <strong>semáforo</strong> (verde, amarillo, rojo) según las condiciones actuales y predicciones.</li>
+    <li>Se entrena un modelo <strong>Prophet</strong> para capturar la tendencia y estacionalidad del ETF.</li>
+    <li>Las predicciones generadas se ajustan mediante un modelo de <strong>Random Forest</strong>, que aprende los errores residuales de Prophet para corregirlos.</li>
+    <li>Esto permite mejorar la precisión de los valores previstos a corto plazo (próximos 7 días hábiles).</li>
+    <li>Los intervalos de confianza se recalibran en función de la volatilidad reciente.</li>
   </ul>
 
-  <h4 class="mt-4">📊 Métricas que validan la calidad del modelo</h4>
+  <h4 class="mt-4">Validación del modelo</h4>
   <ul>
-    <li><strong>RMSE</strong>, <strong>MAE</strong>, <strong>MAPE</strong> y <strong>R²</strong> para validar la precisión de las predicciones.</li>
-    <li><strong>Precisión direccional</strong>: aciertos al predecir si el precio subirá o bajará.</li>
-    <li><strong>Cobertura del intervalo de confianza</strong>: qué tan frecuentemente el precio real cae dentro del rango proyectado.</li>
+    <li><strong>RMSE</strong>, <strong>MAE</strong>, <strong>MAPE</strong> y <strong>R²</strong> como métricas principales de desempeño.</li>
+    <li><strong>Precisión direccional</strong>: porcentaje de veces que se acierta la dirección (subida o bajada) del precio.</li>
+    <li><strong>Cobertura del intervalo</strong>: proporción de veces que el precio real se ubica dentro del intervalo proyectado.</li>
   </ul>
 
-  <h4 class="mt-4">🚦 ¿Cómo interpretar el semáforo?</h4>
+  <h4 class="mt-4">Sistema de señal tipo semáforo</h4>
   <ul>
-    <li><strong>🟢 Verde</strong>: Señal de entrada favorable según los indicadores técnicos y la predicción.</li>
-    <li><strong>🟡 Amarillo</strong>: Zona de precaución; los datos son mixtos o inciertos.</li>
-    <li><strong>🔴 Rojo</strong>: Señal de salida o alerta; condiciones desfavorables según los análisis.</li>
+    <li><strong>Verde</strong>: Condiciones favorables según predicción y análisis técnico.</li>
+    <li><strong>Amarillo</strong>: Señal de precaución; se identifican condiciones mixtas.</li>
+    <li><strong>Rojo</strong>: Condiciones desfavorables o alta incertidumbre.</li>
   </ul>
 
-  <h4 class="mt-4">🎯 ¿Por qué confiar en este sistema?</h4>
+  <h4 class="mt-4">Razones para confiar en el sistema</h4>
   <ul>
-    <li>Combina predicción cuantitativa y análisis técnico de forma transparente.</li>
-    <li>Evalúa múltiples ETFs y adapta las señales a cada uno.</li>
-    <li>Te ofrece herramientas visuales simples para facilitar decisiones de inversión.</li>
+    <li>Combina modelos estadísticos robustos con técnicas de machine learning.</li>
+    <li>Integra datos técnicos y fundamentales en un solo flujo.</li>
+    <li>Entrega resultados comprensibles mediante visualizaciones y señales simples.</li>
   </ul>
 {% endblock %}
