@@ -4,11 +4,6 @@
 {% block content %}
   <h2 class="mb-4">Dashboard de Prophet - UPRO</h2>
 
-  <!-- Botón para recalcular modelo -->
-  <form method="post" action="{% url 'recalcular' %}" class="mb-4 d-inline">
-    {% csrf_token %}
-    <button type="submit" class="btn btn-warning">Recalcular modelo UPRO</button>
-  </form>
   
   <!-- Botón para ver el semáforo de UPRO -->
   <a href="{% url 'semaforo_upro' %}" class="btn btn-success mb-4 ms-2">Ver señal del día (semáforo)</a>

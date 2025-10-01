@@ -1270,3 +1270,526 @@ def get_btc_signal():
         'color': color,
         'ponderado': round(score, 2)
     }
+
+@lru_cache(maxsize=1)
+def run_prophet_and_plot_tslg():
+
+    # 1) Cargar y preparar TSLG (activo objetivo)
+    tslg = (
+        pd.read_csv(BASE_DIR / 'data' / 'TSLG_data.csv', parse_dates=['Date'])
+        .rename(columns={'Date': 'ds', 'TSLG.Close': 'y'})
+        .sort_values('ds')
+        .reset_index(drop=True)
+    )
+
+    # Indicadores técnicos de TSLG
+    stoch = StochasticOscillator(
+        close=tslg['y'],
+        high=tslg['TSLG.High'],
+        low=tslg['TSLG.Low'],
+        window=14,
+        smooth_window=3
+    )
+    tslg['stoch_k'] = stoch.stoch()
+    tslg['stoch_d'] = stoch.stoch_signal()
+    scaler = StandardScaler()
+    tslg['volume_scaled'] = scaler.fit_transform(tslg[['TSLG.Volume']])
+
+    # 2) Cargar y preparar TSLA (regresores exógenos)
+    tsla = (
+        pd.read_csv(BASE_DIR / 'data' / 'TSLA_data.csv', parse_dates=['Date'])
+        .rename(columns={'Date': 'ds', 'TSLA.Close': 'tsla_close'})
+        .sort_values('ds')
+        .reset_index(drop=True)
+    )
+    tsla['tsla_return'] = np.log(tsla['tsla_close'] / tsla['tsla_close'].shift(1))
+
+    # 3) Merge + rezagos
+    df = pd.merge(tslg, tsla[['ds', 'tsla_close', 'tsla_return']], on='ds', how='inner')
+    df['y_lag1'] = df['y'].shift(1)
+    df['y_lag2'] = df['y'].shift(2)
+    df.dropna(inplace=True)
+
+    regs = ['stoch_k', 'stoch_d', 'tsla_close', 'tsla_return', 'y_lag1', 'y_lag2']
+
+    # 4) Entrenar Prophet
+    model = Prophet(
+        daily_seasonality=False,
+        weekly_seasonality=True,
+        seasonality_mode='multiplicative',
+        changepoint_prior_scale=0.05
+    )
+    for r in regs:
+        model.add_regressor(r)
+    model.fit(df[['ds', 'y'] + regs])
+
+    # 5) Forecast a 7 días hábiles
+    future = model.make_future_dataframe(periods=7, freq='B').set_index('ds')
+    hist = df.set_index('ds').reindex(future.index)
+    win = 5
+
+    # Rellenos conservadores
+    future['tsla_close']  = hist['tsla_close'].ffill().fillna(df['tsla_close'].rolling(win).mean().iloc[-1])
+    future['tsla_return'] = hist['tsla_return'].ffill().fillna(df['tsla_return'].rolling(win).mean().iloc[-1])
+    future['y_lag1']      = hist['y'].shift(1).fillna(df['y'].iloc[-1])
+    future['y_lag2']      = hist['y'].shift(2).fillna(df['y'].iloc[-2])
+    for c in ['stoch_k', 'stoch_d']:
+        future[c] = hist[c].fillna(df[c].iloc[-1])
+
+    future = future.reset_index()
+    forecast = model.predict(future)
+
+    # 6) Unir predicción + reales
+    df_pred = forecast[['ds','yhat','yhat_lower','yhat_upper']].merge(
+        df[['ds','y']], on='ds', how='inner'
+    )
+    df_pred['residual'] = df_pred['y'] - df_pred['yhat']
+
+    # 7) Ajuste con Random Forest sobre residuos
+    X_resid = df_pred.merge(df.set_index('ds')[regs], on='ds')[regs]
+    y_resid = df_pred['residual']
+    rf = RandomForestRegressor(n_estimators=200, max_depth=5, min_samples_leaf=5, random_state=42)
+    rf.fit(X_resid, y_resid)
+
+    X_future = future.set_index('ds').loc[forecast['ds'], regs]
+    resid_pred = rf.predict(X_future)
+    forecast['yhat_adj'] = forecast['yhat'] + resid_pred
+
+    # 8) Métricas de rendimiento
+    df_stack = forecast[['ds','yhat_adj']].merge(df[['ds','y']], on='ds', how='inner')
+    y_true = df_stack['y']; y_pred = df_stack['yhat_adj']
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae  = mean_absolute_error(y_true, y_pred)
+    mape = (np.abs((y_true - y_pred) / y_true).mean()) * 100
+    r2   = r2_score(y_true, y_pred)
+
+    in_interval = (
+        (df_stack['y'] >= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_lower'].values) &
+        (df_stack['y'] <= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_upper'].values)
+    )
+    coverage = in_interval.mean() * 100
+
+    df_stack['actual_change'] = df_stack['y'].diff()
+    df_stack['predicted_change'] = df_stack['yhat_adj'].diff()
+    directional_acc = (np.sign(df_stack['actual_change']) == np.sign(df_stack['predicted_change'])).iloc[1:].mean() * 100
+
+    # 9) Predicción del siguiente día hábil
+    today = pd.to_datetime(datetime.now().date())
+    target = today if today.weekday() < 5 else today + BDay(1)
+    future_t = pd.DataFrame({'ds': [target]})
+    last_row = df[df['ds'] < target].iloc[-1]
+    for r in regs:
+        future_t[r] = last_row[r]
+
+    base_pred = model.predict(future_t).iloc[0]
+    yhat_t = base_pred['yhat'] + rf.predict(future_t[regs])[0]
+    lower = base_pred['yhat_lower']
+    upper = base_pred['yhat_upper']
+
+    # 10) Gráfico completo
+    buf1 = BytesIO()
+    plt.figure(figsize=(14,6))
+    plt.plot(df['ds'], df['y'], 'k.', alpha=0.6, label='Real')
+    plt.plot(forecast['ds'], forecast['yhat_adj'], label='Predicción ajustada')
+    plt.fill_between(forecast['ds'], forecast['yhat_lower'], forecast['yhat_upper'], alpha=0.3, label='IC 95%')
+    plt.legend(); plt.tight_layout()
+    plt.savefig(buf1, format='png'); plt.close(); buf1.seek(0)
+    img1 = base64.b64encode(buf1.read()).decode()
+
+    # 11) Gráfico recientes con errorbars
+    last5 = df[df['ds'] < target].sort_values('ds').tail(5)
+    recent_preds = forecast[forecast['ds'].isin(last5['ds'])][['ds','yhat_adj','yhat_lower','yhat_upper']]
+    recent_preds = pd.concat([
+        recent_preds,
+        pd.DataFrame({'ds':[target], 'yhat_adj':[yhat_t],
+                      'yhat_lower':[lower], 'yhat_upper':[upper]})
+    ], ignore_index=True).sort_values('ds')
+
+    buf2 = BytesIO()
+    plt.figure(figsize=(10,6))
+    plt.plot(last5['ds'], last5['y'], 'o-', label='Real')
+    plt.plot(recent_preds['ds'], recent_preds['yhat_adj'], '--', label='Predicción')
+    plt.scatter(recent_preds['ds'], recent_preds['yhat_adj'])
+    # Etiquetas numéricas
+    for x, y in zip(recent_preds['ds'], recent_preds['yhat_adj']):
+        plt.text(x, y, f"{y:.2f}", ha='center', va='bottom', fontsize=9)
+    err_lower = recent_preds['yhat_adj'] - recent_preds['yhat_lower']
+    err_upper = recent_preds['yhat_upper'] - recent_preds['yhat_adj']
+    plt.errorbar(recent_preds['ds'], recent_preds['yhat_adj'],
+                 yerr=[err_lower, err_upper],
+                 fmt='none', capsize=5, label='IC dinámico 95%')
+    plt.legend(); plt.tight_layout()
+    plt.savefig(buf2, format='png'); plt.close(); buf2.seek(0)
+    img2 = base64.b64encode(buf2.read()).decode()
+
+    # 12) Métricas finales
+    metrics = {
+        'rmse': rmse,
+        'mae': mae,
+        'mape': mape,
+        'r2': r2,
+        'coverage': coverage,
+        'directional_acc': directional_acc,
+        'predicted_price': float(yhat_t),
+        'lower_95': float(lower),
+        'upper_95': float(upper),
+        'target_date': target.date(),
+    }
+
+    return {
+        'metrics': metrics,
+        'plot_full': img1,
+        'plot_recent': img2
+    }
+
+
+@lru_cache(maxsize=1)
+def get_tslg_signal():
+    from ta.momentum import RSIIndicator
+    from ta.trend import MACD, CCIIndicator
+
+    # Cargar datos históricos de TSLG (para señal)
+    tslg_df = pd.read_csv(BASE_DIR / 'data' / 'TSLG_data.csv', parse_dates=['Date']).sort_values('Date')
+    tslg_df = tslg_df.rename(columns={'Date': 'ds', 'TSLG.Close': 'close'})
+
+    # Indicadores técnicos
+    rsi = RSIIndicator(close=tslg_df['close'], window=14).rsi()
+    macd = MACD(close=tslg_df['close']).macd_diff()
+    cci = CCIIndicator(
+        high=tslg_df['TSLG.High'],
+        low=tslg_df['TSLG.Low'],
+        close=tslg_df['close'],
+        window=20
+    ).cci()
+
+    rsi_value = rsi.iloc[-1]
+    macd_value = macd.iloc[-1]
+    cci_value = cci.iloc[-1]
+
+    # Señal de Prophet (del modelo TSLG)
+    pred = run_prophet_and_plot_tslg()['metrics']['predicted_price']
+    last_close = tslg_df['close'].iloc[-1]
+    prophet_score = 1 if pred > last_close else 0
+
+    # Señales binarias técnicas
+    rsi_score = 1 if 30 < rsi_value < 60 else 0
+    macd_score = 1 if macd_value > 0 else 0
+    cci_score = 1 if cci_value > 0 else 0
+
+    # Ponderación (idéntica a TQQQ)
+    score = (
+        0.2 * rsi_score +
+        0.2 * macd_score +
+        0.2 * cci_score +
+        0.4 * prophet_score
+    )
+
+    if score > 0.7:
+        decision = 'entrada'
+        color = 'success'
+        recomendacion = 'Posible entrada'
+    elif score < 0.3:
+        decision = 'evitar'
+        color = 'danger'
+        recomendacion = 'Evitar entrada'
+    else:
+        decision = 'esperar'
+        color = 'warning'
+        recomendacion = 'Esperar'
+
+    direction = '↑ Subida' if prophet_score == 1 else '↓ Bajada'
+    prev_close = tslg_df['close'].iloc[-2]
+    consistency = (np.sign(pred - last_close) == np.sign(last_close - prev_close))
+
+    return {
+        'rsi': round(rsi_value, 2),
+        'rsi_zone': 'Sobreventa' if rsi_value < 30 else 'Operable' if rsi_value < 60 else 'Sobrecompra',
+        'macd': round(macd_value, 2),
+        'cci': round(cci_value, 2),
+        'direction': direction,
+        'consistency': consistency,
+        'recomendacion': recomendacion,
+        'color': color,
+        'ponderado': round(score, 2)
+    }
+
+
+
+
+@lru_cache(maxsize=1)
+def run_prophet_and_plot_udow():
+        # 1) Cargar y preparar UDOW (activo objetivo)
+    udow = (
+    pd.read_csv(BASE_DIR / 'data' / 'UDOW_data.csv', parse_dates=['Date'])
+    .rename(columns={'Date': 'ds', 'UDOW.Close': 'y'})
+    .sort_values('ds')
+    .reset_index(drop=True)
+    )
+
+
+    # Indicadores técnicos de UDOW
+    stoch = StochasticOscillator(
+    close=udow['y'],
+    high=udow['UDOW.High'],
+    low=udow['UDOW.Low'],
+    window=14,
+    smooth_window=3,
+    )
+    udow['stoch_k'] = stoch.stoch()
+    udow['stoch_d'] = stoch.stoch_signal()
+
+
+    scaler = StandardScaler()
+    udow['volume_scaled'] = scaler.fit_transform(udow[['UDOW.Volume']])
+
+
+
+    # 2) Cargar y preparar DIA (regresores exógenos)
+    dia = (
+    pd.read_csv(BASE_DIR / 'data' / 'DIA_data.csv', parse_dates=['Date'])
+    .rename(columns={'Date': 'ds', 'DIA.Close': 'dia_close'})
+    .sort_values('ds')
+    .reset_index(drop=True)
+    )
+    dia['dia_return'] = np.log(dia['dia_close'] / dia['dia_close'].shift(1))
+
+
+    # 3) Merge + rezagos
+    df = pd.merge(udow, dia[['ds', 'dia_close', 'dia_return']], on='ds', how='inner')
+    df['y_lag1'] = df['y'].shift(1)
+    df['y_lag2'] = df['y'].shift(2)
+    df.dropna(inplace=True)
+
+
+    regs = ['stoch_k', 'stoch_d', 'dia_close', 'dia_return', 'y_lag1', 'y_lag2']
+
+
+    # 4) Entrenar Prophet
+    model = Prophet(
+    daily_seasonality=False,
+    weekly_seasonality=True,
+    seasonality_mode='multiplicative',
+    changepoint_prior_scale=0.05,
+    )
+    for r in regs:
+        model.add_regressor(r)
+    model.fit(df[['ds', 'y'] + regs])
+    # 5) Forecast a 7 días hábiles
+    future = model.make_future_dataframe(periods=7, freq='B').set_index('ds')
+    hist = df.set_index('ds').reindex(future.index)
+    win = 5
+
+
+    # Rellenos conservadores
+    future['dia_close'] = hist['dia_close'].ffill().fillna(df['dia_close'].rolling(win).mean().iloc[-1])
+    future['dia_return'] = hist['dia_return'].ffill().fillna(df['dia_return'].rolling(win).mean().iloc[-1])
+    future['y_lag1'] = hist['y'].shift(1).fillna(df['y'].iloc[-1])
+    future['y_lag2'] = hist['y'].shift(2).fillna(df['y'].iloc[-2])
+    for c in ['stoch_k', 'stoch_d']:
+        future[c] = hist[c].fillna(df[c].iloc[-1])
+
+
+    future = future.reset_index()
+    forecast = model.predict(future)
+    # 6) Unir predicción + reales
+    df_pred = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].merge(
+    df[['ds', 'y']], on='ds', how='inner'
+    )
+    df_pred['residual'] = df_pred['y'] - df_pred['yhat']
+
+
+    # 7) Ajuste con Random Forest sobre residuos
+    X_resid = df_pred.merge(df.set_index('ds')[regs], on='ds')[regs]
+    y_resid = df_pred['residual']
+    rf = RandomForestRegressor(n_estimators=200, max_depth=5, min_samples_leaf=5, random_state=42)
+    rf.fit(X_resid, y_resid)
+
+
+    X_future = future.set_index('ds').loc[forecast['ds'], regs]
+    resid_pred = rf.predict(X_future)
+    forecast['yhat_adj'] = forecast['yhat'] + resid_pred
+
+
+    # 8) Métricas de rendimiento
+    df_stack = forecast[['ds', 'yhat_adj']].merge(df[['ds', 'y']], on='ds', how='inner')
+    y_true = df_stack['y']
+    y_pred = df_stack['yhat_adj']
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae = mean_absolute_error(y_true, y_pred)
+    mape = (np.abs((y_true - y_pred) / y_true).mean()) * 100
+    r2 = r2_score(y_true, y_pred)
+
+
+    in_interval = (
+    (df_stack['y'] >= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_lower'].values)
+    & (df_stack['y'] <= forecast.set_index('ds').loc[df_stack['ds'], 'yhat_upper'].values)
+    )
+    coverage = in_interval.mean() * 100
+
+
+    df_stack['actual_change'] = df_stack['y'].diff()
+    df_stack['predicted_change'] = df_stack['yhat_adj'].diff()
+    directional_acc = (
+    (np.sign(df_stack['actual_change']) == np.sign(df_stack['predicted_change']))
+    .iloc[1:]
+    .mean()
+    * 100
+    )
+    # 9) Predicción del siguiente día hábil
+    today = pd.to_datetime(datetime.now().date())
+    target = today if today.weekday() < 5 else today + BDay(1)
+    future_t = pd.DataFrame({'ds': [target]})
+
+
+    last_row = df[df['ds'] < target].iloc[-1]
+    for r in regs:
+        future_t[r] = last_row[r]
+
+
+    base_pred = model.predict(future_t).iloc[0]
+    yhat_t = base_pred['yhat'] + rf.predict(future_t[regs])[0]
+    lower = base_pred['yhat_lower']
+    upper = base_pred['yhat_upper']
+
+
+    # 10) Gráfico completo
+    buf1 = BytesIO()
+    plt.figure(figsize=(14, 6))
+    plt.plot(df['ds'], df['y'], 'k.', alpha=0.6, label='Real')
+    plt.plot(forecast['ds'], forecast['yhat_adj'], label='Predicción ajustada')
+    plt.fill_between(
+    forecast['ds'], forecast['yhat_lower'], forecast['yhat_upper'], alpha=0.3, label='IC 95%'
+    )
+    plt.legend(); plt.tight_layout()
+    plt.savefig(buf1, format='png'); plt.close(); buf1.seek(0)
+    img1 = base64.b64encode(buf1.read()).decode()
+
+        # 11) Gráfico recientes con errorbars
+    last5 = df[df['ds'] < target].sort_values('ds').tail(5)
+    recent_preds = forecast[forecast['ds'].isin(last5['ds'])][['ds', 'yhat_adj', 'yhat_lower', 'yhat_upper']]
+    recent_preds = pd.concat(
+    [
+    recent_preds,
+    pd.DataFrame(
+    {
+    'ds': [target],
+    'yhat_adj': [yhat_t],
+    'yhat_lower': [lower],
+    'yhat_upper': [upper],
+    }
+    ),
+    ],
+    ignore_index=True,
+    ).sort_values('ds')
+
+
+    buf2 = BytesIO()
+    plt.figure(figsize=(10, 6))
+    plt.plot(last5['ds'], last5['y'], 'o-', label='Real')
+    plt.plot(recent_preds['ds'], recent_preds['yhat_adj'], '--', label='Predicción')
+    plt.scatter(recent_preds['ds'], recent_preds['yhat_adj'])
+    for x, y in zip(recent_preds['ds'], recent_preds['yhat_adj']):
+        plt.text(x, y, f"{y:.2f}", ha='center', va='bottom', fontsize=9)
+    err_lower = recent_preds['yhat_adj'] - recent_preds['yhat_lower']
+    err_upper = recent_preds['yhat_upper'] - recent_preds['yhat_adj']
+    plt.errorbar(
+    recent_preds['ds'],
+    recent_preds['yhat_adj'],
+    yerr=[err_lower, err_upper],
+    fmt='none',
+    capsize=5,
+    label='IC dinámico 95%',
+    )
+    plt.legend(); plt.tight_layout()
+    plt.savefig(buf2, format='png'); plt.close(); buf2.seek(0)
+    img2 = base64.b64encode(buf2.read()).decode()
+
+    # 12) Métricas finales
+    metrics = {
+    'rmse': float(rmse),
+    'mae': float(mae),
+    'mape': float(mape),
+    'r2': float(r2),
+    'coverage': float(coverage),
+    'directional_acc': float(directional_acc),
+    'predicted_price': float(yhat_t),
+    'lower_95': float(lower),
+    'upper_95': float(upper),
+    'target_date': target.date(),
+    }
+
+
+    return {'metrics': metrics, 'plot_full': img1, 'plot_recent': img2}
+
+
+
+@lru_cache(maxsize=1)
+def get_udow_signal():
+    # Cargar datos históricos de UDOW (para señal)
+    udow_df = (
+        pd.read_csv(BASE_DIR / 'data' / 'UDOW_data.csv', parse_dates=['Date'])
+        .sort_values('Date')
+        .rename(columns={'Date': 'ds', 'UDOW.Close': 'close'})
+    )
+
+    # Indicadores técnicos
+    rsi = RSIIndicator(close=udow_df['close'], window=14).rsi()
+    macd = MACD(close=udow_df['close']).macd_diff()
+    cci = CCIIndicator(
+        high=udow_df['UDOW.High'],
+        low=udow_df['UDOW.Low'],
+        close=udow_df['close'],
+        window=20,
+    ).cci()
+
+
+    rsi_value = rsi.iloc[-1]
+    macd_value = macd.iloc[-1]
+    cci_value = cci.iloc[-1]
+
+
+    # Señal de Prophet (del modelo UDOW)
+    pred = run_prophet_and_plot_udow()['metrics']['predicted_price']
+    last_close = udow_df['close'].iloc[-1]
+    prophet_score = 1 if pred > last_close else 0
+
+
+    # Señales binarias técnicas (ajusta umbrales si deseas)
+    rsi_score = 1 if 30 < rsi_value < 60 else 0
+    macd_score = 1 if macd_value > 0 else 0
+    cci_score = 1 if cci_value > 0 else 0
+
+
+    score = 0.2 * rsi_score + 0.2 * macd_score + 0.2 * cci_score + 0.4 * prophet_score
+
+
+    if score > 0.7:
+        decision = 'entrada'
+        color = 'success'
+        recomendacion = 'Posible entrada'
+    elif score < 0.3:
+        decision = 'evitar'
+        color = 'danger'
+        recomendacion = 'Evitar entrada'
+    else:
+        decision = 'esperar'
+        color = 'warning'
+        recomendacion = 'Esperar'
+
+
+    direction = '↑ Subida' if prophet_score == 1 else '↓ Bajada'
+    prev_close = udow_df['close'].iloc[-2]
+    consistency = (np.sign(pred - last_close) == np.sign(last_close - prev_close))
+
+
+    return {
+        'rsi': round(float(rsi_value), 2),
+        'rsi_zone': 'Sobreventa' if rsi_value < 30 else 'Operable' if rsi_value < 60 else 'Sobrecompra',
+        'macd': round(float(macd_value), 2),
+        'cci': round(float(cci_value), 2),
+        'direction': direction,
+        'consistency': bool(consistency),
+        'recomendacion': recomendacion,
+        'color': color,
+        'ponderado': round(float(score), 2),
+        }

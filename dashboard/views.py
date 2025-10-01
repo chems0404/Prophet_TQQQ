@@ -2,18 +2,22 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from .utils import (
-    run_prophet_and_plot,
-    run_upro_prophet_and_plot,
-    run_soxl_prophet_and_plot,
-    run_qqq_prophet_and_plot,
-    run_btc_prophet_and_plot,         # ← NUEVO
-    run_rhhby_prophet_and_plot,  # <-- Añadido
+    run_prophet_and_plot,          # TQQQ
+    run_upro_prophet_and_plot,     # UPRO
+    run_soxl_prophet_and_plot,     # SOXL
+    run_qqq_prophet_and_plot,      # QQQ
+    run_btc_prophet_and_plot,      # BTC
+    run_rhhby_prophet_and_plot,    # RHHBY
+    run_prophet_and_plot_tslg,
+    run_prophet_and_plot_udow,
     get_tqqq_signal,
     get_upro_signal,
     get_soxl_signal,
     get_qqq_signal,
-    get_btc_signal,                  # ← NUEVO
-    get_rhhby_signal            # <-- Añadido
+    get_btc_signal,
+    get_rhhby_signal,
+    get_tslg_signal,
+    get_udow_signal,
 )
 
 from django.contrib.auth.decorators import login_required
@@ -39,11 +43,7 @@ def dashboard_view(request):
     }
     return render(request, 'dashboard/dashboard.html', context)
 
-@login_required
-def recalcular_view(request):
-    run_prophet_and_plot.cache_clear()
-    run_upro_prophet_and_plot.cache_clear()
-    return redirect('dashboard_tqqq')  # Aquí corregido
+
 
 
 @login_required
@@ -144,4 +144,34 @@ def semaforo_btc_view(request):
     context = get_btc_signal()
     return render(request, 'dashboard/semaforo_btc.html', context)
 
+@login_required
+def dashboard_tslg_view(request):
+    ts_output = run_prophet_and_plot_tslg()
+    context = {
+        'tslg_plot_full': ts_output['plot_full'],
+        'tslg_plot_recent': ts_output['plot_recent'],
+        'tslg_metrics': ts_output['metrics'],
+    }
+    return render(request, 'dashboard/dashboard_tslg.html', context)
 
+@login_required
+def semaforo_tslg_view(request):
+    context = get_tslg_signal()
+    return render(request, 'dashboard/semaforo_tslg.html', context)
+
+
+@login_required
+def dashboard_udow_view(request):
+    udow_output = run_prophet_and_plot_udow()
+    context = {
+        'udow_plot_full': udow_output['plot_full'],
+        'udow_plot_recent': udow_output['plot_recent'],
+        'udow_metrics': udow_output['metrics'],
+    }
+    return render(request, 'dashboard/dashboard_udow.html', context)
+
+# >>> ADD: UDOW – Semáforo
+@login_required
+def semaforo_udow_view(request):
+    context = get_udow_signal()
+    return render(request, 'dashboard/semaforo_udow.html', context)

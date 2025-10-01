@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard TSLG{% endblock %}
+
+{% block content %}
+  <h2 class="mb-4">Dashboard de Prophet - TSLG (Tesla 2× Long)</h2>
+
+  
+
+  <!-- Botón para ver el semáforo de TSLG -->
+  <a href="{% url 'semaforo_tslg' %}" class="btn btn-success mb-4 ms-2">Ver señal del día (semáforo)</a>
+
+  <div class="row">
+    <div class="col-md-6 mb-4">
+      <h5>Serie completa vs Predicción</h5>
+      <img src="data:image/png;base64,{{ tslg_plot_full }}" class="img-fluid rounded">
+    </div>
+    <div class="col-md-6 mb-4">
+      <h5>Últimos 5 días & Predicción siguiente día</h5>
+      <img src="data:image/png;base64,{{ tslg_plot_recent }}" class="img-fluid rounded">
+    </div>
+  </div>
+
+  <h5>Métricas</h5>
+  <ul class="list-group mb-4">
+    <li class="list-group-item">RMSE: {{ tslg_metrics.rmse }}</li>
+    <li class="list-group-item">MAE: {{ tslg_metrics.mae }}</li>
+    <li class="list-group-item">MAPE: {{ tslg_metrics.mape }}%</li>
+    <li class="list-group-item">R²: {{ tslg_metrics.r2 }}</li>
+    <li class="list-group-item">Predicción para {{ tslg_metrics.target_date }}: {{ tslg_metrics.predicted_price }}</li>
+    <li class="list-group-item">IC dinámico 95%: [{{ tslg_metrics.lower_95 }}, {{ tslg_metrics.upper_95 }}]</li>
+    <li class="list-group-item">Precisión direccional: {{ tslg_metrics.directional_acc|floatformat:2 }}%</li>
+    <li class="list-group-item">Cobertura IC Estática: {{ tslg_metrics.coverage|floatformat:2 }}%</li>
+  </ul>
+
+  <p class="mt-4 text-muted text-sm fst-italic">
+    ⚠️ Esta predicción es solo una estimación basada en datos históricos y no constituye una recomendación de inversión.
+  </p>
+{% endblock %}

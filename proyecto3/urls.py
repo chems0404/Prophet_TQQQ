@@ -10,14 +10,17 @@ from dashboard.views import (
     dashboard_qqq_view,
     dashboard_rhhby_view,
     dashboard_btc_view,            # ← NUEVO
-    recalcular_view,
+    dashboard_tslg_view,
+    dashboard_udow_view,
     explicacion_view,
     semaforo_tqqq_view,
     semaforo_upro_view,
     semaforo_soxl_view,
     semaforo_qqq_view,
     semaforo_rhhby_view,
-    semaforo_btc_view              # ← NUEVO
+    semaforo_btc_view,
+    semaforo_tslg_view,
+    semaforo_udow_view,
 )
 
 urlpatterns = [
@@ -40,7 +43,9 @@ urlpatterns = [
     path('dashboard/soxl/', dashboard_soxl_view, name='dashboard_soxl'),
     path('dashboard/qqq/', dashboard_qqq_view, name='dashboard_qqq'),
     path('dashboard/rhhby/', dashboard_rhhby_view, name='dashboard_rhhby'),
-    path('dashboard/btc/', dashboard_btc_view, name='dashboard_btc'),  # ← NUEVO
+    path('dashboard/btc/', dashboard_btc_view, name='dashboard_btc'),
+    path('dashboard/tslg/', dashboard_tslg_view, name='dashboard_tslg'), # ← NUEVO
+    path('dashboard/udow/', dashboard_udow_view, name='dashboard_udow'),  # ← NUEVO
 
     # Señales tipo semáforo
     path('semaforo/tqqq/', semaforo_tqqq_view, name='semaforo_tqqq'),
@@ -48,9 +53,10 @@ urlpatterns = [
     path('semaforo/soxl/', semaforo_soxl_view, name='semaforo_soxl'),
     path('semaforo/qqq/', semaforo_qqq_view, name='semaforo_qqq'),
     path('semaforo/rhhby/', semaforo_rhhby_view, name='semaforo_rhhby'),
-    path('semaforo/btc/', semaforo_btc_view, name='semaforo_btc'),    # ← NUEVO
+    path('semaforo/btc/', semaforo_btc_view, name='semaforo_btc'),
+    path('semaforo/tslg/', semaforo_tslg_view, name='semaforo_tslg'), 
+    path('semaforo/udow/', semaforo_udow_view, name='semaforo_udow'),    # ← NUEVO
 
     # Otros
-    path('recalcular/', recalcular_view, name='recalcular'),
     path('como-funciona/', explicacion_view, name='explicacion'),
 ]

@@ -4,12 +4,12 @@
 {% block content %}
   <h2 class="mb-4">¿Cómo funciona el sistema de predicción y señales?</h2>
 
-  <p>Este dashboard integra modelos de series temporales con técnicas de aprendizaje automático para analizar y proyectar el comportamiento de ETFs como <strong>TQQQ</strong>, <strong>UPRO</strong> y <strong>SOXL</strong>. A continuación se describe su funcionamiento:</p>
+  <p>Este dashboard integra modelos de series temporales con técnicas de aprendizaje automático para analizar y proyectar el comportamiento de ETFs como <strong>TQQQ</strong>, <strong>UPRO</strong>, <strong>SOXL</strong> y <strong>UDOW</strong>. A continuación se describe su funcionamiento:</p>
 
   <h4 class="mt-4">Datos utilizados</h4>
   <ul>
     <li>Históricos de precios y retornos diarios de los ETFs objetivo.</li>
-    <li>Precios y retornos de los ETFs subyacentes (ej. QQQ, SPY).</li>
+    <li>Precios y retornos de los ETFs subyacentes (ej. QQQ, SPY, DIA para UDOW).</li>
     <li>Indicadores técnicos: <strong>RSI</strong>, <strong>MACD</strong>, <strong>CCI</strong>.</li>
     <li>Volumen normalizado y rezagos del precio como variables adicionales.</li>
   </ul>
@@ -42,4 +42,97 @@
     <li>Integra datos técnicos y fundamentales en un solo flujo.</li>
     <li>Entrega resultados comprensibles mediante visualizaciones y señales simples.</li>
   </ul>
+
+  <!-- FORMULACIÓN MATEMÁTICA -->
+  <h3 class="mt-5">Formulación matemática (Prophet + Random Forest)</h3>
+
+  <h5 class="mt-3">1) Modelo base Prophet</h5>
+  <p>
+    \[
+    y_t = g(t) + s(t) + \mathbf{x}(t)^\top \boldsymbol{\beta} + \varepsilon_t,
+    \qquad \varepsilon_t \sim \mathcal{N}(0, \sigma^2)
+    \]
+  </p>
+  <p>
+    \[
+    y_t \approx \left(g(t) + s(t) + \mathbf{x}(t)^\top \boldsymbol{\beta} \right)\cdot(1 + \varepsilon_t)
+    \]
+  </p>
+  <p>
+    \[
+    g(t) = \left(k + \mathbf{a}(t)^\top \boldsymbol{\delta} \right)(t - t_0) + \left(m + \mathbf{a}(t)^\top \boldsymbol{\gamma} \right)
+    \]
+  </p>
+  <p>
+    \[
+    s_P(t) = \sum_{n=1}^{N_P} \left(a_n \cos\left(\frac{2\pi n t}{P} \right) + b_n \sin\left(\frac{2\pi n t}{P} \right)\right), \quad
+    s(t) = \sum_{P \in \mathcal{P}} s_P(t)
+    \]
+  </p>
+  <p>
+    \[
+    \mathbf{x}(t)^\top \boldsymbol{\beta} = \beta_1 x_1(t) + \cdots + \beta_p x_p(t)
+    \]
+  </p>
+
+  <h5 class="mt-4">2) Corrección con Random Forest</h5>
+  <p>
+    \[
+    r_t = y_t - \widehat{y}^{\mathrm{Prophet}}_t
+    \quad \Rightarrow \quad
+    \widehat{r}^{\mathrm{RF}}_t = \frac{1}{B} \sum_{b=1}^B f^{(b)}(\mathbf{z}_t)
+    \]
+    \[
+    \widehat{y}_t^{\,\mathrm{adj}} = \widehat{y}^{\mathrm{Prophet}}_t + \widehat{r}^{\mathrm{RF}}_t
+    \]
+  </p>
+  <p>
+    \[
+    \Delta\mathrm{Var} = \mathrm{Var}(S) - \frac{|S_L|}{|S|} \mathrm{Var}(S_L) - \frac{|S_R|}{|S|} \mathrm{Var}(S_R)
+    \]
+  </p>
+
+  <h5 class="mt-4">3) Intervalos de predicción</h5>
+  <p>
+    \[
+    \widehat{y}^{\,\mathrm{adj}}_t \in \left[
+    \widehat{y}^{\mathrm{Prophet}}_{t,\;0.025} + \widehat{r}^{\mathrm{RF}}_t,\;
+    \widehat{y}^{\mathrm{Prophet}}_{t,\;0.975} + \widehat{r}^{\mathrm{RF}}_t
+    \right]
+    \]
+  </p>
+
+  <h5 class="mt-4">4) Métricas de validación</h5>
+  <p>
+    \[
+    \mathrm{RMSE} = \sqrt{\frac{1}{n} \sum_{t=1}^{n} (y_t - \widehat{y}_t)^2}, \quad
+    \mathrm{MAE} = \frac{1}{n} \sum_{t=1}^{n} \left| y_t - \widehat{y}_t \right|
+    \]
+  </p>
+  <p>
+    \[
+    \mathrm{MAPE} = \frac{100}{n} \sum_{t=1}^{n} \left| \frac{y_t - \widehat{y}_t}{y_t} \right|, \quad
+    R^2 = 1 - \frac{\sum_t (y_t - \widehat{y}_t)^2}{\sum_t (y_t - \bar{y})^2}
+    \]
+  </p>
+  <p>
+    \[
+    \text{DirAcc} = \frac{1}{n-1} \sum_{t=2}^{n} \mathbf{1}\left[\operatorname{sign}(y_t - y_{t-1}) = \operatorname{sign}(\widehat{y}_t - \widehat{y}_{t-1})\right] \cdot 100\%
+    \]
+  </p>
+{% endblock %}
+
+{% block extra_scripts %}
+  <!-- Carga MathJax para mostrar ecuaciones -->
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['\\(','\\)'], ['$', '$']],
+        displayMath: [['\\[','\\]'], ['$$','$$']],
+        processEscapes: true
+      },
+      svg: { fontCache: 'global' }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" defer></script>
 {% endblock %}

@@ -4,11 +4,6 @@
 {% block content %}
   <h2 class="mb-4">Dashboard de Prophet</h2>
 
-  <!-- Botón para recalcular ambos modelos -->
-  <form method="post" action="{% url 'recalcular' %}" class="mb-4 d-inline">
-    {% csrf_token %}
-    <button type="submit" class="btn btn-warning">Recalcular modelos Prophet</button>
-  </form>
 
   <!-- Botón para ver el semáforo de TQQQ -->
   <a href="{% url 'semaforo_tqqq' %}" class="btn btn-success mb-4 ms-2">Ver señal del día (semáforo)</a>
