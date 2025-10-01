@@ -246,6 +246,72 @@ def prep_BTC(dd: Path):
     regs = ['btc_return','y_lag1','y_lag2','ibit_close','ibit_return','ibit_lag1']
     return df[['ds','y']+regs], regs, 'logexp'
 
+def prep_UDOW(dd: Path):
+    
+    udow = pd.read_csv(dd/'UDOW_data.csv', parse_dates=['Date']).rename(
+        columns={'Date':'ds', 'UDOW.Close':'y'}
+    ).sort_values('ds').reset_index(drop=True)
+
+    # Indicadores técnicos de UDOW
+    st = StochasticOscillator(
+        close=udow['y'],
+        high=udow['UDOW.High'],
+        low=udow['UDOW.Low'],
+        window=14, smooth_window=3
+    )
+    udow['stoch_k'] = st.stoch()
+    udow['stoch_d'] = st.stoch_signal()
+    scaler = StandardScaler()
+    udow['volume_scaled'] = scaler.fit_transform(udow[['UDOW.Volume']])
+# Regresores de DIA
+    dia = pd.read_csv(dd/'DIA_data.csv', parse_dates=['Date']).rename(
+        columns={'Date':'ds', 'DIA.Close':'dia_close'}
+    ).sort_values('ds').reset_index(drop=True)
+    dia['dia_return'] = np.log(dia['dia_close'] / dia['dia_close'].shift(1))
+
+    # Merge + rezagos
+    df = pd.merge(udow, dia[['ds', 'dia_close', 'dia_return']], on='ds', how='inner')
+    df['y_lag1'] = df['y'].shift(1)
+    df['y_lag2'] = df['y'].shift(2)
+
+    df = df.dropna().sort_values('ds').reset_index(drop=True)
+    regs = ['stoch_k', 'stoch_d', 'volume_scaled', 'dia_close', 'dia_return', 'y_lag1', 'y_lag2']
+    return df[['ds', 'y'] + regs], regs, 'level'
+
+
+def prep_TSLG(dd: Path):
+  
+    tslg = pd.read_csv(dd/'TSLG_data.csv', parse_dates=['Date']).rename(
+        columns={'Date':'ds', 'TSLG.Close':'y'}
+    ).sort_values('ds').reset_index(drop=True)
+
+    # Indicadores técnicos de TSLG
+    st = StochasticOscillator(
+        close=tslg['y'],
+        high=tslg['TSLG.High'],
+        low=tslg['TSLG.Low'],
+        window=14, smooth_window=3
+    )
+    tslg['stoch_k'] = st.stoch()
+    tslg['stoch_d'] = st.stoch_signal()
+    scaler = StandardScaler()
+    tslg['volume_scaled'] = scaler.fit_transform(tslg[['TSLG.Volume']])
+
+    # Regresores de TSLA
+    tsla = pd.read_csv(dd/'TSLA_data.csv', parse_dates=['Date']).rename(
+        columns={'Date':'ds', 'TSLA.Close':'tsla_close'}
+    ).sort_values('ds').reset_index(drop=True)
+    tsla['tsla_return'] = np.log(tsla['tsla_close'] / tsla['tsla_close'].shift(1))
+
+    # Merge + rezagos
+    df = pd.merge(tslg, tsla[['ds', 'tsla_close', 'tsla_return']], on='ds', how='inner')
+    df['y_lag1'] = df['y'].shift(1)
+    df['y_lag2'] = df['y'].shift(2)
+
+    df = df.dropna().sort_values('ds').reset_index(drop=True)
+    regs = ['stoch_k', 'stoch_d', 'volume_scaled', 'tsla_close', 'tsla_return', 'y_lag1', 'y_lag2']
+    return df[['ds', 'y'] + regs], regs, 'level'
+
 # ---------- Semáforo (score con RSI/MACD/CCI + dirección Prophet) ----------
 def semaforo_from_components(rsi_val, macd_val, cci_val, direccion_prophet):
     rsi_score  = 1 if 30 < rsi_val < 60 else 0
@@ -334,6 +400,9 @@ def main():
     summaries.append(backtest_symbol("QQQ",  prep_QQQ,  n_days=N_DAYS))
     summaries.append(backtest_symbol("RHHBY", prep_RHHBY, n_days=N_DAYS))
     summaries.append(backtest_symbol("BTC",  prep_BTC,  n_days=N_DAYS))
+    summaries.append(backtest_symbol("UDOW", prep_UDOW, n_days=N_DAYS))
+    summaries.append(backtest_symbol("TSLG", prep_TSLG, n_days=N_DAYS))
+    
 
     df_sum = pd.DataFrame(summaries)
     df_sum.to_csv(OUT_DIR / "summary_semaforo.csv", index=False)
